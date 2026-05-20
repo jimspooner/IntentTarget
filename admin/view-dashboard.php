@@ -221,7 +221,7 @@ $active_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'dashboa
         <form method="post" action="">
             <?php wp_nonce_field('itp_save_adverts_action', 'itp_save_adverts_nonce'); ?>
             
-            <div style="background:#fff; padding:25px; border:2px solid #e1ad01; margin: 15px 0 30px 0; border-radius:4px;">
+            <!-- <div style="background:#fff; padding:25px; border:2px solid #e1ad01; margin: 15px 0 30px 0; border-radius:4px;">
                 <h3 style="margin-top:0; color:#c49600;">Global Default Banner (Incognito & Guest Visitors)</h3>
                 <p class="description">This fallback message and hyperlink display immediately to logged-out users, incognito sessions, or individuals with low target scores.</p>
                 <table class="form-table" style="margin-top:10px;">
@@ -238,7 +238,7 @@ $active_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'dashboa
                         <td><input type="text" name="itp_advert_settings[global][main_btn]" value="<?php echo $g_btn; ?>" class="large-text" style="max-width:250px;" /></td>
                     </tr>
                 </table>
-            </div>
+            </div> -->
             
             <h2>Targeted Marketing Segment Profiles</h2>
             <p class="description">Configure the promotional copy served dynamically when a logged-in user crosses an engagement propensity barrier (>25 score units).</p>
