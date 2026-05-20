@@ -1,0 +1,17 @@
+# IntentTarget Pro - Core Project Rules
+
+## Tech Stack & Environment
+- Platform: WordPress 6.x Core / WooCommerce
+- Language Standards: Object-Oriented PHP, JavaScript, Clean HTML5/CSS
+
+## Naming & White-Labelling Conventions
+- ALL newly created or modified custom functions must strictly use the prefix 'lee_dev_' followed by a descriptive phrase and a random 4-digit unique integer suffix.
+- Example: function lee_dev_dynamic_categories_loop_4912()
+
+## Localization & Grammar Rules
+- Enforce strict UK English text parameters across all strings and labels.
+- Mandated spelling variants: 'licence' (noun), 'licise'/'license' (verb actions), 'customise', 'optimise', 'authorised', 'unauthorised'.
+
+## Memory & Performance Guardrails
+- Core keyword loops must run inside background chunked batch cron sequences ('cit_hourly_tracking_batch_event').
+- Limit raw processing blocks to a maximum of 50 assets per processing cycle to safeguard host server RAM.
