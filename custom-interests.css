@@ -1,0 +1,118 @@
+/* Container for each checkbox item */
+.cit-interest-item {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    padding: 8px;
+    position: relative;
+    user-select: none;
+}
+
+/* Hide the browser's default checkbox */
+.cit-interest-item input {
+    position: absolute;
+    opacity: 0;
+    cursor: pointer;
+    height: 0;
+    width: 0;
+}
+
+/* Create a custom checkbox (the box) */
+.cit-checkmark {
+    height: 20px;
+    width: 20px;
+    background-color: #eee;
+    border-radius: 4px;
+    margin-right: 12px;
+    display: inline-block;
+    position: relative;
+    border: 1px solid #ccc;
+    transition: all 0.2s ease;
+}
+
+/* On mouse-over, add a grey background color */
+.cit-interest-item:hover input~.cit-checkmark {
+    background-color: #ddd;
+}
+
+/* When the checkbox is checked, add the #074e85 background */
+.cit-interest-item input:checked~.cit-checkmark {
+    background-color: #074e85;
+    border-color: #074e85;
+}
+
+/* Create the checkmark/indicator (hidden when not checked) */
+.cit-checkmark:after {
+    content: "";
+    position: absolute;
+    display: none;
+}
+
+/* Show the checkmark when checked */
+.cit-interest-item input:checked~.cit-checkmark:after {
+    display: block;
+}
+
+/* Style the checkmark (White Tick) */
+.cit-interest-item .cit-checkmark:after {
+    left: 6px;
+    top: 2px;
+    width: 6px;
+    height: 11px;
+    border: solid white;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+
+.cit-accordion-icon::after {
+    content: "";
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-right: 2px solid #666;
+    border-bottom: 2px solid #666;
+    transform: rotate(45deg);
+    transition: transform 0.3s ease;
+}
+
+.uk-open .cit-accordion-icon::after {
+    transform: rotate(-135deg);
+}
+
+.uk-accordion-title::before {
+    display: none !important;
+}
+
+/* ==================================================================
+       FORCE SPECIFICITY OVERRIDE FOR THE INDETERMINATE/PARTIAL STATE
+       ================================================================== */
+
+/* Force the background container blue and visible */
+html body .cit-preferences-wrap .cit-interest-item.cit-partial input~.cit-checkmark,
+html body .cit-preferences-wrap .cit-interest-item.cit-partial .cit-checkmark {
+    background-color: #2271b1 !important;
+    border-color: #2271b1 !important;
+}
+
+/* Force the pseudo-element graphic to display as a flat white dash inside the box */
+html body .cit-preferences-wrap .cit-interest-item.cit-partial input~.cit-checkmark::after,
+html body .cit-preferences-wrap .cit-interest-item.cit-partial .cit-checkmark::after {
+    display: block !important;
+    content: "" !important;
+    position: absolute !important;
+
+    /* Clear any inherited border tick properties from the core styles */
+    border: none !important;
+    border-right: none !important;
+    border-bottom: none !important;
+
+    /* Construct the horizontal line dimensions */
+    background: #ffffff !important;
+    width: 8px !important;
+    height: 2px !important;
+
+    /* Perfect alignment centering metrics */
+    left: 50% !important;
+    top: 50% !important;
+    transform: translate(-50%, -50%) !important;
+}
