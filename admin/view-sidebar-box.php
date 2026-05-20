@@ -8,7 +8,7 @@ function lee_dev_register_automated_meta_sidebar_4812() {
     $screens = get_post_types( array( 'public' => true ) );
     foreach ($screens as $screens_key) {
         add_meta_box(
-            'cit_automated_tracking_meta',
+            'itp_automated_tracking_meta',
             'Page Interest Tracker',
             'lee_dev_render_automated_sidebar_content_9381',
             $screens_key,
@@ -23,7 +23,7 @@ add_action('add_meta_boxes', 'lee_dev_register_automated_meta_sidebar_4812');
  * Render the Found Keyphrase Badges inside the Sidebar Meta Box
  */
 function lee_dev_render_automated_sidebar_content_9381($post) {
-    $saved_keywords = get_post_meta($post->ID, '_cit_tracking_labels', true);
+    $saved_keywords = get_post_meta($post->ID, '_itp_tracking_labels', true);
 
     echo '<div style="padding: 2px 0;">';
     echo '<p class="description" style="margin-top:0; margin-bottom:12px; line-height:1.4;">';

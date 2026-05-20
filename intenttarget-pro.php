@@ -18,6 +18,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // 1. SAFE LOAD DECOUPLED COMPONENT SYSTEM
+require_once plugin_dir_path( __FILE__ ) . 'core/class-lee-dev-transient.php';
 require_once plugin_dir_path( __FILE__ ) . 'core/class-lee-dev-access.php';
 require_once plugin_dir_path( __FILE__ ) . 'core/class-lee-dev-parser.php';
 require_once plugin_dir_path( __FILE__ ) . 'core/class-lee-dev-cron.php';
@@ -34,8 +35,8 @@ require_once plugin_dir_path( __FILE__ ) . 'telemetry/class-lee-dev-tracker.php'
 // =========================================================================
 // 2. SHORTCODES REGISTER BOOTSTRAP
 // =========================================================================
-add_shortcode('cit_preferences_dashboard', 'lee_dev_preferences_shortcode_6382');
-add_shortcode('cit_user_preferences', 'lee_dev_preferences_shortcode_6382');
+add_shortcode('itp_preferences_dashboard', 'lee_dev_preferences_shortcode_6382');
+add_shortcode('itp_user_preferences', 'lee_dev_preferences_shortcode_6382');
 
 // =========================================================================
 // 3. WOOCOMMERCE MY INTERESTS TAB INTEGRATION
@@ -56,7 +57,7 @@ if ( ! function_exists( 'lee_dev_add_wc_interests_menu_item_6472' ) ) {
         $new_items = array();
         foreach ($items as $key => $item) {
             if ($key === 'customer-logout') {
-                $new_items['interests'] = __('My Interests', 'custom-interest-tracker');
+                $new_items['interests'] = __('My Interests', 'intenttarget-pro');
             }
             $new_items[$key] = $item;
         }
@@ -72,10 +73,10 @@ if ( ! function_exists( 'lee_dev_add_wc_interests_endpoint_7584' ) ) {
 
 if ( ! function_exists( 'lee_dev_render_wc_interests_tab_2947' ) ) {
     function lee_dev_render_wc_interests_tab_2947() {
-        if ( shortcode_exists( 'cit_preferences_dashboard' ) ) {
-            echo do_shortcode('[cit_preferences_dashboard]');
-        } elseif ( shortcode_exists( 'cit_user_preferences' ) ) {
-            echo do_shortcode('[cit_user_preferences]');
+        if ( shortcode_exists( 'itp_preferences_dashboard' ) ) {
+            echo do_shortcode('[itp_preferences_dashboard]');
+        } elseif ( shortcode_exists( 'itp_user_preferences' ) ) {
+            echo do_shortcode('[itp_user_preferences]');
         }
     }
 }
@@ -95,13 +96,13 @@ function lee_dev_activate_plugin_9481() {
     }
 
     // Schedule background telemetry job hourly
-    if ( ! wp_next_scheduled( 'cit_hourly_tracking_batch_event' ) ) {
-        wp_schedule_event( time(), 'hourly', 'cit_hourly_tracking_batch_event' );
+    if ( ! wp_next_scheduled( 'itp_hourly_tracking_batch_event' ) ) {
+        wp_schedule_event( time(), 'hourly', 'itp_hourly_tracking_batch_event' );
     }
 }
 
 register_deactivation_hook(__FILE__, 'lee_dev_deactivate_plugin_3821');
 function lee_dev_deactivate_plugin_3821() {
     wp_clear_scheduled_hook( 'lee_dev_cron_batch_scan_event_9201' );
-    wp_clear_scheduled_hook( 'cit_hourly_tracking_batch_event' );
+    wp_clear_scheduled_hook( 'itp_hourly_tracking_batch_event' );
 }

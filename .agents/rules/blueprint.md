@@ -13,9 +13,9 @@ trigger: always-on
 - **Security Protocols:** Protect all form processing blocks using `check_admin_referer` and safely escape all output fields using `esc_html` and `esc_textarea`.
 
 ## 2. Structural Architecture & Database Constants
-- **Master Options Key:** `cit_dynamic_keyword_dictionary` inside the `wp_options` table.
-- **Tracking Badge Key:** Active evaluated content metrics must save to post metadata using `_cit_tracking_labels` as an array.
-- **Cron Scheduling Key:** Store execution flags in `_cit_last_tracked_time` to balance server query frequencies.
+- **Master Options Key:** `itp_dynamic_keyword_dictionary` inside the `wp_options` table.
+- **Tracking Badge Key:** Active evaluated content metrics must save to post metadata using `_itp_tracking_labels` as an array.
+- **Cron Scheduling Key:** Store execution flags in `_itp_last_tracked_time` to balance server query frequencies.
 
 ## 3. High-Priority System Constraints
 - **Low-Memory Safety Guard:** Standard blog posts (`post`) and standard layout pages (`page`) must NEVER have their raw headlines, text content, or full body copy processed to harvest keywords. They must be handled strictly via active public Taxonomies (Categories and Tags) to protect client servers from memory time-outs.

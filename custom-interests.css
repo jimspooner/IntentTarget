@@ -1,5 +1,5 @@
 /* Container for each checkbox item */
-.cit-interest-item {
+.itp-interest-item {
     display: flex;
     align-items: center;
     cursor: pointer;
@@ -9,7 +9,7 @@
 }
 
 /* Hide the browser's default checkbox */
-.cit-interest-item input {
+.itp-interest-item input {
     position: absolute;
     opacity: 0;
     cursor: pointer;
@@ -18,7 +18,7 @@
 }
 
 /* Create a custom checkbox (the box) */
-.cit-checkmark {
+.itp-checkmark {
     height: 20px;
     width: 20px;
     background-color: #eee;
@@ -31,30 +31,30 @@
 }
 
 /* On mouse-over, add a grey background color */
-.cit-interest-item:hover input~.cit-checkmark {
+.itp-interest-item:hover input~.itp-checkmark {
     background-color: #ddd;
 }
 
 /* When the checkbox is checked, add the #074e85 background */
-.cit-interest-item input:checked~.cit-checkmark {
+.itp-interest-item input:checked~.itp-checkmark {
     background-color: #074e85;
     border-color: #074e85;
 }
 
 /* Create the checkmark/indicator (hidden when not checked) */
-.cit-checkmark:after {
+.itp-checkmark:after {
     content: "";
     position: absolute;
     display: none;
 }
 
 /* Show the checkmark when checked */
-.cit-interest-item input:checked~.cit-checkmark:after {
+.itp-interest-item input:checked~.itp-checkmark:after {
     display: block;
 }
 
 /* Style the checkmark (White Tick) */
-.cit-interest-item .cit-checkmark:after {
+.itp-interest-item .itp-checkmark:after {
     left: 6px;
     top: 2px;
     width: 6px;
@@ -64,7 +64,7 @@
     transform: rotate(45deg);
 }
 
-.cit-accordion-icon::after {
+.itp-accordion-icon::after {
     content: "";
     display: inline-block;
     width: 8px;
@@ -75,7 +75,7 @@
     transition: transform 0.3s ease;
 }
 
-.uk-open .cit-accordion-icon::after {
+.uk-open .itp-accordion-icon::after {
     transform: rotate(-135deg);
 }
 
@@ -88,15 +88,15 @@
        ================================================================== */
 
 /* Force the background container blue and visible */
-html body .cit-preferences-wrap .cit-interest-item.cit-partial input~.cit-checkmark,
-html body .cit-preferences-wrap .cit-interest-item.cit-partial .cit-checkmark {
+html body .itp-preferences-wrap .itp-interest-item.itp-partial input~.itp-checkmark,
+html body .itp-preferences-wrap .itp-interest-item.itp-partial .itp-checkmark {
     background-color: #2271b1 !important;
     border-color: #2271b1 !important;
 }
 
 /* Force the pseudo-element graphic to display as a flat white dash inside the box */
-html body .cit-preferences-wrap .cit-interest-item.cit-partial input~.cit-checkmark::after,
-html body .cit-preferences-wrap .cit-interest-item.cit-partial .cit-checkmark::after {
+html body .itp-preferences-wrap .itp-interest-item.itp-partial input~.itp-checkmark::after,
+html body .itp-preferences-wrap .itp-interest-item.itp-partial .itp-checkmark::after {
     display: block !important;
     content: "" !important;
     position: absolute !important;

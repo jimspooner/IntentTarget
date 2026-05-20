@@ -4,12 +4,12 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 // =========================================================================
 // 1. SEARCH FEEDBACK AJAX LOGGING INTERCEPTOR
 // =========================================================================
-add_action('wp_ajax_cit_submit_search_feedback', 'lee_dev_handle_search_feedback_ajax_8271');
+add_action('wp_ajax_itp_submit_search_feedback', 'lee_dev_handle_search_feedback_ajax_8271');
 function lee_dev_handle_search_feedback_ajax_8271() {
-    check_ajax_referer('cit_ajax_nonce', 'security');
+    check_ajax_referer('itp_ajax_nonce', 'security');
     
     global $wpdb;
-    $table_name = $wpdb->prefix . 'cit_search_feedback';
+    $table_name = $wpdb->prefix . 'itp_search_feedback';
     $user_id = get_current_user_id();
     $search_query = sanitize_text_field($_POST['search_query'] ?? '');
     $found_result = sanitize_text_field($_POST['found_result'] ?? '');
@@ -56,13 +56,13 @@ function lee_dev_handle_search_feedback_ajax_8271() {
 // =========================================================================
 // 2. HIGH ENGAGEMENT AJAX CALLBACK REGISTER
 // =========================================================================
-add_action('wp_ajax_cit_mark_high_engagement', 'lee_dev_mark_high_engagement_ajax_9421');
-add_action('wp_ajax_nopriv_cit_mark_high_engagement', 'lee_dev_mark_high_engagement_ajax_9421');
+add_action('wp_ajax_itp_mark_high_engagement', 'lee_dev_mark_high_engagement_ajax_9421');
+add_action('wp_ajax_nopriv_itp_mark_high_engagement', 'lee_dev_mark_high_engagement_ajax_9421');
 function lee_dev_mark_high_engagement_ajax_9421() {
     $user_id = isset($_POST['user_id']) ? intval($_POST['user_id']) : get_current_user_id();
     if ( $user_id > 0 ) {
-        update_user_meta($user_id, 'cit_high_engagement_flag', 'yes');
-        update_user_meta($user_id, 'cit_last_interaction_date', current_time('mysql'));
+        update_user_meta($user_id, 'itp_high_engagement_flag', 'yes');
+        update_user_meta($user_id, 'itp_last_interaction_date', current_time('mysql'));
         wp_send_json_success();
     }
     wp_send_json_error();

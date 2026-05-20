@@ -5,7 +5,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
  * Calculate user interest propensity score for a given group/category
  */
 function lee_dev_calculate_group_propensity_1289($group_name, $user_id) {
-    if (get_user_meta($user_id, 'cit_disable_tracking', true)) {
+    if (get_user_meta($user_id, 'itp_disable_tracking', true)) {
         return -9999; 
     }
 
@@ -15,7 +15,7 @@ function lee_dev_calculate_group_propensity_1289($group_name, $user_id) {
 
     $score = 0;
     
-    $dictionary = get_option('cit_dynamic_keyword_dictionary', []);
+    $dictionary = get_option('itp_dynamic_keyword_dictionary', []);
     $keywords = isset($dictionary[$group_name]) ? $dictionary[$group_name] : [];
 
     // 1. Manual User Preferences weight (+50 points)

@@ -4,7 +4,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 // =========================================================================
 // 1. WEEKLY BACKGROUND TELEMETRY TRACKER
 // =========================================================================
-add_action( 'cit_hourly_tracking_batch_event', 'lee_dev_maybe_send_telemetry_ping_3821' );
+add_action( 'itp_hourly_tracking_batch_event', 'lee_dev_maybe_send_telemetry_ping_3821' );
 function lee_dev_maybe_send_telemetry_ping_3821() {
     $last_ping = (int) get_option( '_lee_dev_last_telemetry_time', 0 );
     $one_week_in_seconds = 604800; // 7 days * 24h * 60m * 60s
@@ -14,7 +14,7 @@ function lee_dev_maybe_send_telemetry_ping_3821() {
     }
 
     // Build the system telemetry payload
-    $dictionary = get_option( 'cit_dynamic_keyword_dictionary', [] );
+    $dictionary = get_option( 'itp_dynamic_keyword_dictionary', [] );
     $category_count = is_array( $dictionary ) ? count( $dictionary ) : 0;
 
     global $wpdb;
@@ -22,7 +22,7 @@ function lee_dev_maybe_send_telemetry_ping_3821() {
     $tracked_posts_count = (int) $wpdb->get_var( "
         SELECT COUNT(DISTINCT post_id) 
         FROM {$postmeta_table} 
-        WHERE meta_key = '_cit_tracking_labels'
+        WHERE meta_key = '_itp_tracking_labels'
     " );
 
     $payload = array(
@@ -68,11 +68,11 @@ function lee_dev_check_licence_status_9421() {
 // =========================================================================
 add_action( 'admin_init', 'lee_dev_process_licence_activation_4812' );
 function lee_dev_process_licence_activation_4812() {
-    if ( ! isset( $_POST['cit_licence_submit'] ) ) {
+    if ( ! isset( $_POST['itp_licence_submit'] ) ) {
         return;
     }
 
-    if ( ! isset( $_POST['cit_licence_nonce'] ) || ! wp_verify_nonce( $_POST['cit_licence_nonce'], 'cit_licence_action' ) ) {
+    if ( ! isset( $_POST['itp_licence_nonce'] ) || ! wp_verify_nonce( $_POST['itp_licence_nonce'], 'itp_licence_action' ) ) {
         wp_die( 'Security verification failed.' );
     }
 
@@ -80,34 +80,55 @@ function lee_dev_process_licence_activation_4812() {
         wp_die( 'Insufficient permissions to perform this action.' );
     }
 
-    $action = sanitize_text_field( $_POST['cit_licence_action_type'] ?? '' );
+    $action = sanitize_text_field( $_POST['itp_licence_action_type'] ?? '' );
 
     if ( $action === 'activate' ) {
-        $raw_key = sanitize_text_field( $_POST['cit_licence_key'] ?? '' );
+        $raw_key = sanitize_text_field( $_POST['itp_licence_key'] ?? '' );
         $clean_key = trim( $raw_key );
 
         if ( empty( $clean_key ) ) {
             update_option( 'lee_dev_licence_status', 'unauthorised' );
-            wp_safe_redirect( add_query_arg( array( 'page' => 'cit-search-dashboard', 'licence-updated' => 'empty' ), admin_url( 'admin.php' ) ) );
+            wp_safe_redirect( add_query_arg( array( 'page' => 'itp-search-dashboard', 'licence-updated' => 'empty' ), admin_url( 'admin.php' ) ) );
             exit;
         }
 
-        // Mock verification validation - key must be at least 10 characters
-        if ( strlen( $clean_key ) >= 10 ) {
+        $endpoint = apply_filters( 'lee_dev_licence_activation_endpoint_4812', 'https://intenttargetpro.com/wp-json/intenttarget-hub/v1/activate' );
+        $response = wp_safe_remote_post( $endpoint, array(
+            'timeout' => 15,
+            'body'    => array(
+                'licence_code'     => $clean_key,
+                'activation_email' => get_option( 'admin_email' ),
+                'domain'           => wp_parse_url( home_url(), PHP_URL_HOST ),
+                'client_url'       => home_url(),
+            ),
+        ) );
+
+        if ( is_wp_error( $response ) ) {
+            update_option( 'lee_dev_licence_key', $clean_key );
+            update_option( 'lee_dev_licence_status', 'unauthorised' );
+            wp_safe_redirect( add_query_arg( array( 'page' => 'itp-search-dashboard', 'licence-updated' => 'invalid' ), admin_url( 'admin.php' ) ) );
+            exit;
+        }
+
+        $response_code = (int) wp_remote_retrieve_response_code( $response );
+        $body          = json_decode( wp_remote_retrieve_body( $response ), true );
+        $remote_status = is_array( $body ) && isset( $body['status'] ) ? sanitize_text_field( $body['status'] ) : 'unauthorised';
+
+        if ( $response_code === 200 && $remote_status === 'active' ) {
             update_option( 'lee_dev_licence_key', $clean_key );
             update_option( 'lee_dev_licence_status', 'authorised' );
-            wp_safe_redirect( add_query_arg( array( 'page' => 'cit-search-dashboard', 'licence-updated' => 'authorised' ), admin_url( 'admin.php' ) ) );
+            wp_safe_redirect( add_query_arg( array( 'page' => 'itp-search-dashboard', 'licence-updated' => 'authorised' ), admin_url( 'admin.php' ) ) );
             exit;
         } else {
             update_option( 'lee_dev_licence_key', $clean_key );
             update_option( 'lee_dev_licence_status', 'unauthorised' );
-            wp_safe_redirect( add_query_arg( array( 'page' => 'cit-search-dashboard', 'licence-updated' => 'invalid' ), admin_url( 'admin.php' ) ) );
+            wp_safe_redirect( add_query_arg( array( 'page' => 'itp-search-dashboard', 'licence-updated' => 'invalid' ), admin_url( 'admin.php' ) ) );
             exit;
         }
     } elseif ( $action === 'deactivate' ) {
         delete_option( 'lee_dev_licence_key' );
         update_option( 'lee_dev_licence_status', 'unauthorised' );
-        wp_safe_redirect( add_query_arg( array( 'page' => 'cit-search-dashboard', 'licence-updated' => 'deactivated' ), admin_url( 'admin.php' ) ) );
+        wp_safe_redirect( add_query_arg( array( 'page' => 'itp-search-dashboard', 'licence-updated' => 'deactivated' ), admin_url( 'admin.php' ) ) );
         exit;
     }
 }

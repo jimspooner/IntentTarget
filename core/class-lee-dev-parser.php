@@ -19,7 +19,7 @@ function lee_dev_get_active_categories_5921() {
     }
 
     // Fetch active WooCommerce product categories
-    if ( taxonomy_exists( 'product_cat' ) ) {
+    if ( class_exists( 'WooCommerce' ) && taxonomy_exists( 'product_cat' ) ) {
         $wc_terms = get_terms( array(
             'taxonomy'   => 'product_cat',
             'hide_empty' => false,
@@ -43,7 +43,7 @@ function lee_dev_execute_combined_content_scan_1289($post_id, $post) {
     do_action( 'lee_dev_before_post_scan_1289', $post_id, $post );
 
     $current_type = ! empty($post->post_type) ? $post->post_type : 'post';
-    $dictionary = get_option('cit_dynamic_keyword_dictionary', []);
+    $dictionary = get_option('itp_dynamic_keyword_dictionary', []);
     if ( empty($dictionary) ) return;
 
     $target_phrases = [];
@@ -66,7 +66,11 @@ function lee_dev_execute_combined_content_scan_1289($post_id, $post) {
 
     // CRITICAL LOW-MEMORY SAFETY GUARD: Standard blog posts & pages NEVER scan title, content, or full body copy.
     // They are evaluated strictly via active public Taxonomy terms.
-    $scannable_post_types = apply_filters( 'lee_dev_scannable_post_types_1289', array( 'post', 'page', 'product' ) );
+    $default_scannable_post_types = array( 'post', 'page' );
+    if ( class_exists( 'WooCommerce' ) ) {
+        $default_scannable_post_types[] = 'product';
+    }
+    $scannable_post_types = apply_filters( 'lee_dev_scannable_post_types_1289', $default_scannable_post_types );
     
     if ( in_array( $current_type, $scannable_post_types, true ) ) {
         if ( $current_type === 'post' || $current_type === 'page' ) {
@@ -92,7 +96,7 @@ function lee_dev_execute_combined_content_scan_1289($post_id, $post) {
             $raw_text_pool[] = $post->post_content;
             $raw_text_pool[] = $post->post_excerpt;
 
-            if ( $current_type === 'product' && class_exists('WooCommerce') ) {
+            if ( class_exists( 'WooCommerce' ) && $current_type === 'product' ) {
                 if ( function_exists('wc_get_product') ) {
                     $product = wc_get_product($post_id);
                     if ( $product ) {
@@ -154,9 +158,9 @@ function lee_dev_execute_combined_content_scan_1289($post_id, $post) {
     $matched_labels = apply_filters( 'lee_dev_matched_labels_1289', $matched_labels, $post_id, $post );
 
     if ( ! empty($matched_labels) ) {
-        update_post_meta($post_id, '_cit_tracking_labels', array_values($matched_labels));
+        update_post_meta($post_id, '_itp_tracking_labels', array_values($matched_labels));
     } else {
-        delete_post_meta($post_id, '_cit_tracking_labels');
+        delete_post_meta($post_id, '_itp_tracking_labels');
     }
 
     do_action( 'lee_dev_after_post_scan_1289', $post_id, $matched_labels );
