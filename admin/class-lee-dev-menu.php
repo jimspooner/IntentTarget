@@ -31,6 +31,54 @@ function lee_dev_render_unified_search_dashboard_4829() {
     }
 }
 
+function lee_dev_get_valid_site_intents_6048() {
+    $intents = array(
+        'generating_leads'     => 'Generating Leads',
+        'educating_audiences'  => 'Educating Audiences',
+        'customer_support'     => 'Customer Support',
+    );
+
+    if ( class_exists( 'WooCommerce' ) ) {
+        $intents['driving_sales'] = 'Driving Sales';
+    }
+
+    return $intents;
+}
+
+add_action( 'admin_init', 'lee_dev_process_global_priority_settings_6048' );
+function lee_dev_process_global_priority_settings_6048() {
+    if ( ! isset( $_POST['itp_save_global_priority'] ) ) {
+        return;
+    }
+
+    check_admin_referer( 'itp_save_global_priority_action', 'itp_save_global_priority_nonce' );
+    if ( ! current_user_can( 'manage_options' ) ) wp_die( 'Insufficient access privileges.' );
+
+    $valid_intents = lee_dev_get_valid_site_intents_6048();
+    $submitted     = isset( $_POST['itp_global_priority'] ) && is_array( $_POST['itp_global_priority'] ) ? array_map( 'sanitize_text_field', $_POST['itp_global_priority'] ) : array();
+    $priority      = array();
+
+    foreach ( $submitted as $intent_key ) {
+        if ( isset( $valid_intents[$intent_key] ) && ! in_array( $intent_key, $priority, true ) ) {
+            $priority[] = $intent_key;
+        }
+    }
+
+    foreach ( array_keys( $valid_intents ) as $intent_key ) {
+        if ( ! in_array( $intent_key, $priority, true ) ) {
+            $priority[] = $intent_key;
+        }
+    }
+
+    update_option( 'itp_global_priority', $priority, false );
+    if ( function_exists( 'lee_dev_debug_log_event_6158' ) ) {
+        lee_dev_debug_log_event_6158( 'global_priority.updated', array( 'priority' => $priority ) );
+    }
+
+    wp_safe_redirect( add_query_arg( array( 'page' => 'itp-search-dashboard', 'tab' => 'popout_adverts', 'priority-updated' => 'true' ), admin_url( 'admin.php' ) ) );
+    exit;
+}
+
 // =========================================================================
 // 2. ADMIN USER PROFILE INSIGHTS INJECTION
 // =========================================================================

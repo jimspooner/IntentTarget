@@ -17,6 +17,29 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit; // Exit if accessed directly
 }
 
+function lee_dev_initialise_plugin_autoloader_4827( $class_name ) {
+    if ( strpos( $class_name, 'Lee_Dev_' ) === false ) {
+        return;
+    }
+
+    $file_name = 'class-' . strtolower( str_replace( '_', '-', $class_name ) ) . '.php';
+    $base_path = plugin_dir_path( __FILE__ );
+    $directories = array(
+        'core/',
+        'admin/',
+        'telemetry/',
+    );
+
+    foreach ( $directories as $directory ) {
+        $file_path = $base_path . $directory . $file_name;
+        if ( file_exists( $file_path ) ) {
+            require_once $file_path;
+            return;
+        }
+    }
+}
+spl_autoload_register( 'lee_dev_initialise_plugin_autoloader_4827' );
+
 // 1. SAFE LOAD DECOUPLED COMPONENT SYSTEM
 require_once plugin_dir_path( __FILE__ ) . 'core/class-lee-dev-transient.php';
 require_once plugin_dir_path( __FILE__ ) . 'core/class-lee-dev-access.php';
@@ -31,6 +54,13 @@ require_once plugin_dir_path( __FILE__ ) . 'admin/view-sidebar-box.php';
 require_once plugin_dir_path( __FILE__ ) . 'telemetry/class-lee-dev-advertising.php';
 require_once plugin_dir_path( __FILE__ ) . 'telemetry/class-lee-dev-ajax.php';
 require_once plugin_dir_path( __FILE__ ) . 'telemetry/class-lee-dev-tracker.php';
+
+if ( function_exists( 'lee_dev_debug_log_event_6158' ) ) {
+    lee_dev_debug_log_event_6158( 'bootstrap.loaded', array(
+        'licence_status' => get_option( 'lee_dev_licence_status', 'unauthorised' ),
+        'admin_area'     => is_admin() ? 'yes' : 'no',
+    ) );
+}
 
 // =========================================================================
 // 2. SHORTCODES REGISTER BOOTSTRAP

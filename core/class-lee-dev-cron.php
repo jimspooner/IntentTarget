@@ -133,12 +133,21 @@ function lee_dev_run_hourly_content_keyword_scan_7394() {
         }
 
         $asset_matches = array();
+        $asset_tracking_labels = array();
         foreach ( $keyword_groups as $group_key => $phrases ) {
             foreach ( $phrases as $phrase ) {
                 if ( $phrase !== '' && stripos( $content_body, $phrase ) !== false ) {
                     $asset_matches[$group_key][] = $phrase;
+                    $asset_tracking_labels[] = $phrase;
                 }
             }
+        }
+
+        $asset_tracking_labels = array_values( array_unique( array_map( 'sanitize_text_field', $asset_tracking_labels ) ) );
+        if ( ! empty( $asset_tracking_labels ) ) {
+            update_post_meta( $asset_id, '_itp_tracking_labels', $asset_tracking_labels );
+        } else {
+            delete_post_meta( $asset_id, '_itp_tracking_labels' );
         }
 
         foreach ( $asset_matches as $group_key => $matched_phrases ) {

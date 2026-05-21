@@ -87,6 +87,12 @@ $active_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'dashboa
             echo '<div class="notice notice-warning is-dismissible"><p><strong>Empty Licence Key:</strong> Please provide a key for activation.</p></div>';
         }
     }
+
+    if ( isset( $_GET['debug-updated'] ) && $_GET['debug-updated'] === 'true' ) {
+        echo '<div class="notice notice-success is-dismissible"><p><strong>Debug logging updated:</strong> Diagnostic tracing preference saved.</p></div>';
+    }
+
+    $debug_logging_enabled = function_exists( 'lee_dev_debug_logging_is_enabled_2846' ) && lee_dev_debug_logging_is_enabled_2846();
     ?>
     <div style="background: #fff; border: 1px solid #ccd0d4; border-left: 4px solid <?php echo ( $licence_status === 'authorised' ) ? '#46b450' : '#d63638'; ?>; padding: 15px 20px; margin-bottom: 20px; border-radius: 4px; display: flex; align-items: center; justify-content: space-between;">
         <div>
@@ -117,6 +123,21 @@ $active_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'dashboa
                 </span>
                 <input type="submit" name="itp_licence_submit" class="button button-secondary" value="Deactivate" />
             <?php endif; ?>
+        </form>
+    </div>
+
+    <div style="background: #fff; border: 1px solid #ccd0d4; padding: 15px 20px; margin-bottom: 20px; border-radius: 4px;">
+        <form method="post" action="" style="display:flex; align-items:center; justify-content:space-between; gap:15px;">
+            <?php wp_nonce_field( 'itp_debug_logging_toggle_nonce' ); ?>
+            <div>
+                <h3 style="margin: 0 0 5px 0; font-size: 15px; font-weight: bold; color: #1d2327;">Debug Logging</h3>
+                <p style="margin: 0; font-size: 13px; color: #646970;">Write IntentTarget Pro diagnostic trace entries to the WordPress debug log.</p>
+            </div>
+            <label style="display:flex; align-items:center; gap:8px;">
+                <input type="checkbox" name="itp_debug_logging_enabled" value="yes" <?php checked( $debug_logging_enabled ); ?> />
+                <span><?php echo esc_html( $debug_logging_enabled ? 'Debug logging is on' : 'Debug logging is off' ); ?></span>
+            </label>
+            <input type="submit" name="itp_debug_logging_toggle" class="button button-secondary" value="Update Debug Logging" />
         </form>
     </div>
 
@@ -198,95 +219,49 @@ $active_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'dashboa
     // TAB 2: DYNAMIC ADVERTS CONFIGURATOR
     // =========================================================================
     elseif ( $active_tab === 'popout_adverts' ) : 
-        if ( isset($_POST['itp_save_adverts']) && current_user_can('manage_options') ) {
-            check_admin_referer('itp_save_adverts_action', 'itp_save_adverts_nonce');
-            
-            $settings = isset($_POST['itp_advert_settings']) ? $_POST['itp_advert_settings'] : [];
-            update_option('itp_advert_settings', $settings);
-            
-            echo '<div class="notice notice-success is-dismissible"><p>Advert configurations successfully saved.</p></div>';
+        if ( isset( $_GET['priority-updated'] ) && $_GET['priority-updated'] === 'true' ) {
+            echo '<div class="notice notice-success is-dismissible"><p>Global site purpose priority saved.</p></div>';
         }
 
-        $opts = get_option('itp_advert_settings');
-        if ( ! is_array($opts) ) {
-            $opts = [];
+        $valid_intents = function_exists( 'lee_dev_get_valid_site_intents_6048' ) ? lee_dev_get_valid_site_intents_6048() : array();
+        $saved_priority = get_option( 'itp_global_priority', array_keys( $valid_intents ) );
+        if ( ! is_array( $saved_priority ) ) {
+            $saved_priority = array_keys( $valid_intents );
         }
-        
-        $groups = function_exists('lee_dev_get_active_categories_5921') ? lee_dev_get_active_categories_5921() : [];
-
-        $g_title = esc_attr($opts['global']['main_title'] ?? 'Discover personalised recommendations');
-        $g_url   = esc_url($opts['global']['main_url'] ?? '/store/');
-        $g_btn   = esc_attr($opts['global']['main_btn'] ?? 'Find Out More');
-        ?>
-        <form method="post" action="">
-            <?php wp_nonce_field('itp_save_adverts_action', 'itp_save_adverts_nonce'); ?>
-            
-            <!-- <div style="background:#fff; padding:25px; border:2px solid #e1ad01; margin: 15px 0 30px 0; border-radius:4px;">
-                <h3 style="margin-top:0; color:#c49600;">Global Default Banner (Incognito & Guest Visitors)</h3>
-                <p class="description">This fallback message and hyperlink display immediately to logged-out users, incognito sessions, or individuals with low target scores.</p>
-                <table class="form-table" style="margin-top:10px;">
-                    <tr>
-                        <th style="width:200px;"><label>Default Title Text Statement</label></th>
-                        <td><input type="text" name="itp_advert_settings[global][main_title]" value="<?php echo $g_title; ?>" class="large-text" /></td>
-                    </tr>
-                    <tr>
-                        <th><label>Destination Hyperlink URL</label></th>
-                        <td><input type="text" name="itp_advert_settings[global][main_url]" value="<?php echo $g_url; ?>" class="large-text" /></td>
-                    </tr>
-                    <tr>
-                        <th><label>Link Call To Action Text</label></th>
-                        <td><input type="text" name="itp_advert_settings[global][main_btn]" value="<?php echo $g_btn; ?>" class="large-text" style="max-width:250px;" /></td>
-                    </tr>
-                </table>
-            </div> -->
-            
-            <h2>Targeted Marketing Segment Profiles</h2>
-            <p class="description">Configure the promotional copy served dynamically when a logged-in user crosses an engagement propensity barrier (>25 score units).</p>
-            <br/>
-            
-            <?php
-            foreach ($groups as $slug => $label) {
-                $id      = esc_attr($opts[$slug]['id'] ?? '');
-                $m_title = esc_attr($opts[$slug]['main_title'] ?? '');
-                $m_desc  = esc_textarea($opts[$slug]['main_desc'] ?? '');
-                $m_url   = esc_url($opts[$slug]['main_url'] ?? '');
-                $m_btn   = esc_attr($opts[$slug]['main_btn'] ?? '');
-                
-                $a_title = esc_attr($opts[$slug]['alt_title'] ?? '');
-                $a_desc  = esc_textarea($opts[$slug]['alt_desc'] ?? '');
-                $a_url   = esc_url($opts[$slug]['alt_url'] ?? '');
-                $a_btn   = esc_attr($opts[$slug]['alt_btn'] ?? '');
-                ?>
-                <div style="background:#fff; padding:20px; border:1px solid #ccd0d4; margin-bottom:20px; border-radius:4px;">
-                    <h3 style="margin-top:0; border-bottom:1px solid #eee; padding-bottom:10px; color:#2271b1;"><?php echo esc_html($label); ?></h3>
-                    <?php if ( class_exists( 'WooCommerce' ) ) : ?>
-                        <p><label><strong>WooCommerce Product ID (For Post-Purchase Upsell Suppression):</strong><br/>
-                        <input type="number" name="itp_advert_settings[<?php echo esc_attr($slug); ?>][id]" value="<?php echo $id; ?>" style="width:100%; max-width:200px; margin-top:5px;" placeholder="e.g. 412" /></label></p>
-                    <?php endif; ?>
-                    
-                    <div style="display:flex; gap:20px; margin-top:15px;">
-                        <div style="flex:1; background:#f9f9f9; padding:15px; border:1px solid #eee; border-radius:3px;">
-                            <h4 style="margin-top:0; color:#1d2327;">🎯 Primary Advert (Has Not Bought Product Yet)</h4>
-                            <p><label>Title Text:<br/><input type="text" name="itp_advert_settings[<?php echo esc_attr($slug); ?>][main_title]" value="<?php echo $m_title; ?>" style="width:100%;" /></label></p>
-                            <p><label>Description Text:<br/><textarea name="itp_advert_settings[<?php echo esc_attr($slug); ?>][main_desc]" rows="3" style="width:100%; margin-top:5px;"><?php echo $m_desc; ?></textarea></label></p>
-                            <p><label>Destination URL Link:<br/><input type="text" name="itp_advert_settings[<?php echo esc_attr($slug); ?>][main_url]" value="<?php echo $m_url; ?>" style="width:100%;" /></label></p>
-                            <p><label>Action Button Text:<br/><input type="text" name="itp_advert_settings[<?php echo esc_attr($slug); ?>][main_btn]" value="<?php echo $m_btn; ?>" style="width:100%;" /></label></p>
-                        </div>
-                        
-                        <div style="flex:1; background:#f9f9f9; padding:15px; border:1px solid #eee; border-radius:3px;">
-                            <h4 style="margin-top:0; color:#646970;">🔄 Alternative Ad Line<?php echo class_exists( 'WooCommerce' ) ? ' (Already Bought Product ID)' : ''; ?></h4>
-                            <p><label>Alt Title Text:<br/><input type="text" name="itp_advert_settings[<?php echo esc_attr($slug); ?>][alt_title]" value="<?php echo $a_title; ?>" style="width:100%;" /></label></p>
-                            <p><label>Alt Description Text:<br/><textarea name="itp_advert_settings[<?php echo esc_attr($slug); ?>][alt_desc]" rows="3" style="width:100%; margin-top:5px;"><?php echo $a_desc; ?></textarea></label></p>
-                            <p><label>Alt Destination URL:<br/><input type="text" name="itp_advert_settings[<?php echo esc_attr($slug); ?>][alt_url]" value="<?php echo $a_url; ?>" style="width:100%;" /></label></p>
-                            <p><label>Alt Action Button Text:<br/><input type="text" name="itp_advert_settings[<?php echo esc_attr($slug); ?>][alt_btn]" value="<?php echo $a_btn; ?>" style="width:100%;" /></label></p>
-                        </div>
-                    </div>
-                </div>
-                <?php
+        $saved_priority = array_values( array_unique( array_filter( $saved_priority, function( $intent_key ) use ( $valid_intents ) {
+            return isset( $valid_intents[$intent_key] );
+        } ) ) );
+        foreach ( array_keys( $valid_intents ) as $intent_key ) {
+            if ( ! in_array( $intent_key, $saved_priority, true ) ) {
+                $saved_priority[] = $intent_key;
             }
-            ?>
-            <p class="submit" style="padding-top:10px;"><input type="submit" name="itp_save_adverts" class="button button-primary button-large" value="Save All Advert Configurations" /></p>
-        </form>
+        }
+        ?>
+        <div style="background:#fff; padding:25px; border:1px solid #ccd0d4; margin-top:15px; border-radius:4px;">
+            <h2 style="margin-top:0;">Global Site Purpose</h2>
+            <p class="description">Rank the main purpose of this site. IntentTarget Pro will attempt to deliver the first available advert, then waterfall to the next priority if no suitable advert can be delivered.</p>
+
+            <form method="post" action="">
+                <?php wp_nonce_field( 'itp_save_global_priority_action', 'itp_save_global_priority_nonce' ); ?>
+                <table class="form-table">
+                    <?php foreach ( array_keys( $valid_intents ) as $priority_index => $intent_key ) : ?>
+                        <tr>
+                            <th scope="row"><label for="itp_global_priority_<?php echo esc_attr( $priority_index ); ?>">Priority <?php echo esc_html( $priority_index + 1 ); ?></label></th>
+                            <td>
+                                <select id="itp_global_priority_<?php echo esc_attr( $priority_index ); ?>" name="itp_global_priority[]" class="regular-text">
+                                    <?php foreach ( $valid_intents as $option_key => $option_label ) : ?>
+                                        <option value="<?php echo esc_attr( $option_key ); ?>" <?php selected( $saved_priority[$priority_index] ?? '', $option_key ); ?>>
+                                            <?php echo esc_html( $option_label ); ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </table>
+                <p class="submit" style="padding-top:10px;"><input type="submit" name="itp_save_global_priority" class="button button-primary button-large" value="Save Global Site Purpose" /></p>
+            </form>
+        </div>
 
     <?php 
     // =========================================================================

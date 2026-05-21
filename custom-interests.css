@@ -71,12 +71,8 @@
     height: 8px;
     border-right: 2px solid #666;
     border-bottom: 2px solid #666;
-    transform: rotate(45deg);
+    transform: rotate(-45deg);
     transition: transform 0.3s ease;
-}
-
-.uk-open .itp-accordion-icon::after {
-    transform: rotate(-135deg);
 }
 
 .uk-accordion-title::before {
@@ -115,4 +111,46 @@ html body .itp-preferences-wrap .itp-interest-item.itp-partial .itp-checkmark::a
     left: 50% !important;
     top: 50% !important;
     transform: translate(-50%, -50%) !important;
+}
+
+/* ==================================================================
+       CUSTOM ACCORDIAN
+       ================================================================== */
+
+.custom-accordion {
+    list-style: none;
+    padding-left: 0;
+}
+
+/* Strip arrows from the header and list item */
+.itp-accordion-item::before,
+.itp-accordion-item::after,
+.itp-accordion-item::marker,
+.itp-accordion-header::before,
+.itp-accordion-header::after {
+    display: none !important;
+    content: none !important;
+    background: none !important;
+}
+
+/* Ensure the ONLY thing showing an after element is our specific icon span */
+.itp-accordion-icon::before {
+    display: none !important;
+}
+
+.itp-accordion-icon svg,
+.itp-accordion-icon img {
+    display: none !important;
+}
+
+/* Hide content by default and set up the smooth transition */
+.itp-accordion-content {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease-out;
+}
+
+/* When the header has the 'active' class, rotate the icon */
+.itp-accordion-header.active .itp-accordion-icon::after {
+    transform: rotate(45deg);
 }

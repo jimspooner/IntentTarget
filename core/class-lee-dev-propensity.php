@@ -16,12 +16,15 @@ function lee_dev_calculate_group_propensity_1289($group_name, $user_id) {
     $score = 0;
     
     $dictionary = get_option('itp_dynamic_keyword_dictionary', []);
-    $keywords = isset($dictionary[$group_name]) ? $dictionary[$group_name] : [];
+    $keywords = isset($dictionary[$group_name]) && is_array($dictionary[$group_name]) ? $dictionary[$group_name] : [];
+    $keywords[] = $group_name;
+    $keywords = array_values(array_unique(array_map('sanitize_title', $keywords)));
+    $manual_data_clean = is_array($manual_data) ? array_map('sanitize_title', $manual_data) : [];
 
     // 1. Manual User Preferences weight (+50 points)
     if (is_array($manual_data)) {
         foreach ($keywords as $word) {
-            if (in_array($word, $manual_data, true)) {
+            if (in_array($word, $manual_data_clean, true)) {
                 $score += 50;
                 break; 
             }
@@ -31,7 +34,7 @@ function lee_dev_calculate_group_propensity_1289($group_name, $user_id) {
     // 2. Automated Category Hits from views (+5 points per occurrence)
     if (is_array($automated_data)) {
         foreach ($automated_data as $sector_slug => $stat) {
-            if (in_array($sector_slug, $keywords, true)) {
+            if (in_array(sanitize_title($sector_slug), $keywords, true)) {
                 $score += ($stat['score'] * 5);
             }
         }
@@ -49,7 +52,6 @@ function lee_dev_calculate_group_propensity_1289($group_name, $user_id) {
         }
     }
 
-    // 4. Seminars Multiplier Event (1.5x during January to April seasons)
     $seminar_slug = apply_filters('lee_dev_seminar_slug_1289', 'seminars');
     if ($group_name === $seminar_slug) {
         $current_month = (int) date('n');

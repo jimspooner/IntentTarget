@@ -5,73 +5,107 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 // 1. CALCULATE TOP ALERT BANNER (Dedicated Guest vs. Sales Separation)
 // =========================================================================
 function lee_dev_get_dynamic_alert_content_3841() {
-    $opts = get_option('itp_advert_settings');
-    if ( ! is_array( $opts ) ) {
-        $opts = array();
-    }
-    
-    // DEDICATED DEFAULT MESSAGE FOR GUESTS & LOW-SCORE SESSIONS
-    $default_title = 'Discover our latest recommendations';
-    $default_url   = '/store/';
-    $default_btn   = 'Find out more';
+    $advert = lee_dev_get_global_priority_advert_7136();
 
-    $default_banner = sprintf(
+    return sprintf(
         '%1$s — <a href="%2$s" style="color:inherit; font-weight:bold; text-decoration:underline;">%3$s</a>',
-        esc_html($default_title),
-        esc_url($default_url),
-        esc_html($default_btn)
+        esc_html($advert['title']),
+        esc_url($advert['url']),
+        esc_html($advert['btn'])
+    );
+}
+
+function lee_dev_get_global_priority_advert_catalogue_7136() {
+    $catalogue = array(
+        'generating_leads' => array(
+            'title' => 'Start a Conversation',
+            'desc'  => 'Invite visitors to make an enquiry and move qualified prospects into your sales pipeline.',
+            'url'   => '/contact/',
+            'btn'   => 'Make an Enquiry',
+        ),
+        'educating_audiences' => array(
+            'title' => 'Explore Helpful Guidance',
+            'desc'  => 'Share useful insight, explain your expertise, and help visitors understand their next step.',
+            'url'   => '/blog/',
+            'btn'   => 'Read Guidance',
+        ),
+        'customer_support' => array(
+            'title' => 'Need Support?',
+            'desc'  => 'Direct visitors towards helpful resources and support information before they need to ask.',
+            'url'   => '/support/',
+            'btn'   => 'Get Support',
+        ),
+        'driving_sales' => array(
+            'title' => 'View Recommended Products',
+            'desc'  => 'Guide engaged visitors towards the products most likely to match their current intent.',
+            'url'   => '/shop/',
+            'btn'   => 'Shop Now',
+        ),
     );
 
-    if ( ! is_user_logged_in() ) {
-        return $default_banner;
+    return apply_filters( 'lee_dev_global_priority_advert_catalogue_7136', $catalogue );
+}
+
+function lee_dev_get_global_priority_order_7136() {
+    $valid_intents = function_exists( 'lee_dev_get_valid_site_intents_6048' ) ? lee_dev_get_valid_site_intents_6048() : array(
+        'generating_leads'    => 'Generating Leads',
+        'educating_audiences' => 'Educating Audiences',
+        'customer_support'    => 'Customer Support',
+    );
+    $priority = get_option( 'itp_global_priority', array_keys( $valid_intents ) );
+    if ( ! is_array( $priority ) ) {
+        $priority = array_keys( $valid_intents );
     }
 
-    if ( function_exists('lee_dev_is_ready_8293') && lee_dev_is_ready_8293() ) {
-        $user_id = get_current_user_id();
-        
-        $labels = function_exists('lee_dev_get_active_categories_5921') ? lee_dev_get_active_categories_5921() : [];
-        $master_groups = array_keys($labels);
-        $group_scores = [];
+    $priority = array_values( array_unique( array_filter( $priority, function( $intent_key ) use ( $valid_intents ) {
+        return isset( $valid_intents[$intent_key] );
+    } ) ) );
 
-        foreach ($master_groups as $g) {
-            $group_scores[$g] = function_exists('lee_dev_calculate_group_propensity_1289') ? lee_dev_calculate_group_propensity_1289($g, $user_id) : 0;
-        }
-
-        arsort($group_scores);
-        $top_group = array_key_first($group_scores);
-        $top_score = isset($group_scores[$top_group]) ? $group_scores[$top_group] : 0;
-
-        if ($top_score > 25) {
-            if ($top_group === 'news') {
-                $latest_news = get_posts(['numberposts' => 1, 'category_name' => 'news', 'post_status' => 'publish']);
-                if (!empty($latest_news)) {
-                    $title = mb_strimwidth(get_the_title($latest_news[0]->ID), 0, 50, '...');
-                    $link  = get_permalink($latest_news[0]->ID);
-                    
-                    return sprintf(
-                        'Latest News: %1$s — <a href="%2$s" style="color:inherit; font-weight:bold; text-decoration:underline;">Read Article</a>',
-                        esc_html($title),
-                        esc_url($link)
-                    );
-                }
-            } else {
-                $title = ! empty($opts[$top_group]['main_title']) ? $opts[$top_group]['main_title'] : '';
-                $url   = ! empty($opts[$top_group]['main_url'])   ? $opts[$top_group]['main_url']   : '';
-                $btn   = ! empty($opts[$top_group]['main_btn'])   ? $opts[$top_group]['main_btn']   : 'View Details';
-
-                if (!empty($title) && !empty($url)) {
-                    return sprintf(
-                        '%1$s — <a href="%2$s" style="color:inherit; font-weight:bold; text-decoration:underline;">%3$s</a>',
-                        esc_html($title),
-                        esc_url($url),
-                        esc_html($btn)
-                    );
-                }
-            }
+    foreach ( array_keys( $valid_intents ) as $intent_key ) {
+        if ( ! in_array( $intent_key, $priority, true ) ) {
+            $priority[] = $intent_key;
         }
     }
-    
-    return $default_banner;
+
+    return $priority;
+}
+
+function lee_dev_get_global_priority_advert_7136( $excluded_intents = array() ) {
+    $catalogue = lee_dev_get_global_priority_advert_catalogue_7136();
+    $priority  = lee_dev_get_global_priority_order_7136();
+    $excluded_intents = is_array( $excluded_intents ) ? $excluded_intents : array();
+
+    foreach ( $priority as $intent_key ) {
+        if ( in_array( $intent_key, $excluded_intents, true ) ) {
+            continue;
+        }
+
+        if ( $intent_key === 'driving_sales' && ! class_exists( 'WooCommerce' ) ) {
+            continue;
+        }
+
+        $advert = isset( $catalogue[$intent_key] ) && is_array( $catalogue[$intent_key] ) ? $catalogue[$intent_key] : array();
+        $title  = isset( $advert['title'] ) ? trim( (string) $advert['title'] ) : '';
+        $url    = isset( $advert['url'] ) ? trim( (string) $advert['url'] ) : '';
+
+        if ( $title === '' || $url === '' ) {
+            continue;
+        }
+
+        $advert['intent'] = $intent_key;
+        $advert['desc']   = isset( $advert['desc'] ) ? $advert['desc'] : '';
+        $advert['btn']    = isset( $advert['btn'] ) && trim( (string) $advert['btn'] ) !== '' ? $advert['btn'] : 'Find Out More';
+
+        return $advert;
+    }
+
+    return array(
+        'intent' => 'fallback',
+        'title'  => 'Discover our latest recommendations',
+        'desc'   => 'Find useful next steps selected for this website.',
+        'url'    => '/',
+        'btn'    => 'Find Out More',
+    );
 }
 
 // =========================================================================
@@ -81,32 +115,12 @@ function lee_dev_get_intent_based_product_9384() {
     if (!function_exists('lee_dev_is_ready_8293') || !lee_dev_is_ready_8293()) return null;
 
     $user_id = get_current_user_id();
-    $opts = get_option('itp_advert_settings', []);
-
-    $labels = function_exists('lee_dev_get_active_categories_5921') ? lee_dev_get_active_categories_5921() : [];
-    $active_slugs = array_keys($labels);
-    
-    $sales_slug = in_array('sales', $active_slugs, true) ? 'sales' : ($active_slugs[0] ?? '');
-    $news_slug = in_array('news', $active_slugs, true) ? 'news' : ($active_slugs[1] ?? ($active_slugs[0] ?? ''));
-
-    $fallback_sales = [
-        'title' => $opts[$sales_slug]['main_title'] ?? '2026 John Nix Pocketbook',
-        'desc'  => $opts[$sales_slug]['main_desc'] ?? 'The most comprehensive source of business information.',
-        'url'   => $opts[$sales_slug]['main_url'] ?? '/store/',
-        'btn'   => $opts[$sales_slug]['main_btn'] ?? 'Get the Edition'
-    ];
-
-    $fallback_news = [
-        'title' => $opts[$news_slug]['main_title'] ?? 'Key Farm Facts',
-        'desc'  => $opts[$news_slug]['main_desc'] ?? 'Need a snapshot of the latest prices?',
-        'url'   => $opts[$news_slug]['main_url'] ?? '/news/',
-        'btn'   => $opts[$news_slug]['main_btn'] ?? 'Stay Ahead'
-    ];
-
     $is_dashboard = (function_exists('is_account_page') && is_account_page() && !is_wc_endpoint_url());
+    $primary_data = lee_dev_get_global_priority_advert_7136();
+    $secondary_data = lee_dev_get_global_priority_advert_7136( array( $primary_data['intent'] ?? '' ) );
 
     if (get_user_meta($user_id, 'itp_disable_tracking', true)) {
-        return $is_dashboard ? ['primary' => $fallback_sales, 'secondary' => $fallback_news] : $fallback_sales;
+        return $is_dashboard ? ['primary' => $primary_data, 'secondary' => $secondary_data] : $primary_data;
     }
 
     if (!is_user_logged_in()) {
@@ -117,62 +131,7 @@ function lee_dev_get_intent_based_product_9384() {
             'btn'   => 'Create Free Account',
             'is_guest' => true
         ];
-        return $is_dashboard ? ['primary' => $guest_ad, 'secondary' => $fallback_sales] : $guest_ad;
-    }
-
-    $master_groups = $active_slugs;
-    $group_scores = [];
-    $current_month = (int) date('n');
-    
-    $seminar_slug = apply_filters('lee_dev_seminar_slug_1289', 'seminars');
-    $is_seminar_season = ($current_month >= 1 && $current_month <= 4);
-
-    foreach ($master_groups as $g) {
-        $score = function_exists('lee_dev_calculate_group_propensity_1289') ? lee_dev_calculate_group_propensity_1289($g, $user_id) : 0;
-        if ($g === $seminar_slug && $is_seminar_season && $score > 0) $score *= 1.5; 
-        $group_scores[$g] = $score;
-    }
-
-    arsort($group_scores);
-    $ranked_keys = array_keys($group_scores);
-    $top_group = $ranked_keys[0] ?? '';
-    $second_group = $ranked_keys[1] ?? '';
-
-    if (empty($top_group) || $group_scores[$top_group] < 25) {
-        return $is_dashboard ? ['primary' => $fallback_sales, 'secondary' => $fallback_news] : $fallback_sales;
-    }
-
-    $product_logic = [];
-    foreach($master_groups as $key) {
-        $product_logic[$key] = [
-            'id' => (int) ($opts[$key]['id'] ?? 0),
-            'main' => [
-                'title' => $opts[$key]['main_title'] ?? '',
-                'desc'  => $opts[$key]['main_desc'] ?? '',
-                'url'   => $opts[$key]['main_url'] ?? '',
-                'btn'   => $opts[$key]['main_btn'] ?? ''
-            ],
-            'alt' => [
-                'title' => $opts[$key]['alt_title'] ?? '',
-                'desc'  => $opts[$key]['alt_desc'] ?? '',
-                'url'   => $opts[$key]['alt_url'] ?? '',
-                'btn'   => $opts[$key]['alt_btn'] ?? ''
-            ]
-        ];
-    }
-
-    $user_email = get_userdata($user_id)->user_email ?: '';
-    
-    $primary_data = $fallback_sales;
-    if (isset($product_logic[$top_group])) {
-        $top_ad = $product_logic[$top_group];
-        $primary_data = (function_exists('wc_customer_bought_product') && wc_customer_bought_product($user_email, $user_id, $top_ad['id'])) ? $top_ad['alt'] : $top_ad['main'];
-    }
-
-    $secondary_data = $fallback_news;
-    if (isset($product_logic[$second_group])) {
-        $second_ad = $product_logic[$second_group];
-        $secondary_data = (function_exists('wc_customer_bought_product') && wc_customer_bought_product($user_email, $user_id, $second_ad['id'])) ? $second_ad['alt'] : $second_ad['main'];
+        return $is_dashboard ? ['primary' => $guest_ad, 'secondary' => $primary_data] : $guest_ad;
     }
 
     return $is_dashboard ? ['primary' => $primary_data, 'secondary' => $secondary_data] : $primary_data;
@@ -364,16 +323,37 @@ function lee_dev_add_dashboard_recommendation_5824() {
 add_action('wp_footer', 'lee_dev_auto_track_native_field_7482', 5);
 function lee_dev_auto_track_native_field_7482() {
     $allowed_types = ['post', 'product', 'projects', 'seminars_events', 'our_people', 'community_support', 'page'];
-    if (!is_singular($allowed_types) || !function_exists('lee_dev_is_ready_8293') || !lee_dev_is_ready_8293()) return;
+    if (!is_singular($allowed_types)) return;
+    if (!function_exists('lee_dev_is_ready_8293') || !lee_dev_is_ready_8293()) {
+        lee_dev_debug_log_event_6158( 'page_view_tracking.skipped_not_ready', array(
+            'post_id' => get_the_ID(),
+        ) );
+        return;
+    }
 
     $sectors_to_track = get_post_meta(get_the_ID(), '_itp_tracking_labels', true);
-    if (empty($sectors_to_track) || !is_array($sectors_to_track)) return;
+    if (empty($sectors_to_track) || !is_array($sectors_to_track)) {
+        lee_dev_debug_log_event_6158( 'page_view_tracking.skipped_no_labels', array(
+            'post_id' => get_the_ID(),
+        ) );
+        return;
+    }
 
     $consent_cookie = $_COOKIE['cookieyes-consent'] ?? '';
-    if (strpos($consent_cookie, 'functional:yes') === false && strpos($consent_cookie, 'analytics:yes') === false) return; 
+    if ( $consent_cookie !== '' && strpos($consent_cookie, 'functional:yes') === false && strpos($consent_cookie, 'analytics:yes') === false ) {
+        lee_dev_debug_log_event_6158( 'page_view_tracking.skipped_cookie_consent', array(
+            'post_id' => get_the_ID(),
+        ) );
+        return;
+    }
 
     $user_id = get_current_user_id();
-    if (!$user_id) return;
+    if (!$user_id) {
+        lee_dev_debug_log_event_6158( 'page_view_tracking.skipped_no_user', array(
+            'post_id' => get_the_ID(),
+        ) );
+        return;
+    }
 
     $interest_map = get_user_meta($user_id, 'user_interest_map', true) ?: [];
     $data_changed = false;
@@ -396,6 +376,11 @@ function lee_dev_auto_track_native_field_7482() {
         }
         uasort($interest_map, function($a, $b) { return $b['score'] <=> $a['score']; });
         update_user_meta($user_id, 'user_interest_map', array_slice($interest_map, 0, 15, true));
+        lee_dev_debug_log_event_6158( 'page_view_tracking.updated', array(
+            'post_id' => get_the_ID(),
+            'user_id' => $user_id,
+            'labels'  => $sectors_to_track,
+        ) );
     }
 }
 
@@ -444,7 +429,7 @@ function lee_dev_preferences_shortcode_6382() {
         
         <form method="post" action="">
             <input type="hidden" name="user_interests_nonce" value="<?php echo wp_create_nonce('itp_save_user_interests'); ?>">
-            <ul uk-accordion="multiple: true" class="uk-accordion uk-remove-before">
+            <ul class="uk-remove-before custom-accordion">
                 <?php 
                 $count = 0;
                 foreach ($dictionary as $group_key => $slugs_array) : 
@@ -454,33 +439,36 @@ function lee_dev_preferences_shortcode_6382() {
                     $group_id = 'group_' . $count;
                     $count++;
                 ?>
-                    <li style="border-bottom: 1px solid #eee; padding-left:0; margin-top:0px;">
-                        <div class="itp-accordion-header" style="display: flex; align-items: center; justify-content: space-between; padding: 15px 0; cursor: pointer;">
-                            <span style="font-size: 1.1rem; font-weight: 600; color: #333;"><?php echo esc_html($group_title); ?></span>
-                            <div style="display: flex; align-items: center; gap: 20px;">
-                                <label class="itp-interest-item" style="margin-bottom: 0; padding-left: 25px; display: flex; align-items: center;" onclick="event.stopPropagation();">
-                                    <input type="checkbox" class="itp-select-all" data-target="<?php echo $group_id; ?>">
-                                    <span class="itp-checkmark"></span>
-                                    <span style="font-size: 11px; color: #999; text-transform: uppercase; font-weight: bold; margin-left: 5px;">Select All</span>
-                                </label>
-                                <span class="itp-accordion-icon"></span>
-                            </div>
-                        </div>
+                    <li style="border-bottom: 1px solid #eee; padding-left:0; margin-top:0px;" class="itp-accordion-item">
+    <div class="itp-accordion-header" style="display: flex; align-items: center; justify-content: space-between; padding: 15px 0; cursor: pointer;">
+        <span style="font-size: 1.1rem; font-weight: 600; color: #333;"><?php echo esc_html($group_title); ?></span>
+        <div style="display: flex; align-items: center; gap: 20px;">
+            <!-- Your Select All label with stopPropagation to prevent opening/closing the accordion -->
+            <label class="itp-interest-item" style="margin-bottom: 0; padding-left: 25px; display: flex; align-items: center;" onclick="event.stopPropagation();">
+                <input type="checkbox" class="itp-select-all" data-target="<?php echo $group_id; ?>">
+                <span class="itp-checkmark"></span>
+                <span style="font-size: 11px; color: #999; text-transform: uppercase; font-weight: bold; margin-left: 5px;">Select All</span>
+            </label>
+            <span class="itp-accordion-icon"></span>
+        </div>
+    </div>
 
-                        <div class="uk-accordion-content" id="<?php echo $group_id; ?>" style="margin-top: 0; padding-bottom: 20px;">
-                            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; padding-left: 20px;">
-                                <?php foreach ($slugs_array as $slug) : 
-                                    $display_name = esc_html(ucwords(str_replace('-', ' ', $slug)));
-                                ?>
-                                    <label class="itp-interest-item">
-                                        <input type="checkbox" name="user_interests[]" value="<?php echo esc_attr($slug); ?>" <?php checked(in_array($slug, $saved_manual)); ?>>
-                                        <span class="itp-checkmark"></span>
-                                        <span style="font-size: 14px;"><?php echo $display_name; ?></span>
-                                    </label>
-                                <?php endforeach; ?>
-                            </div>
-                        </div>
-                    </li>
+    <!-- Added 'itp-accordion-content' class for JS/CSS targeting -->
+    <div class="itp-accordion-content" id="<?php echo $group_id; ?>" style="margin-top: 0;">
+        <!-- Moved padding-bottom: 20px here to prevent animation jumping -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; padding-left: 20px; padding-bottom: 20px;">
+            <?php foreach ($slugs_array as $slug) : 
+                $display_name = esc_html(ucwords(str_replace('-', ' ', $slug)));
+            ?>
+                <label class="itp-interest-item">
+                    <input type="checkbox" name="user_interests[]" value="<?php echo esc_attr($slug); ?>" <?php checked(in_array($slug, $saved_manual)); ?>>
+                    <span class="itp-checkmark"></span>
+                    <span style="font-size: 14px;"><?php echo $display_name; ?></span>
+                </label>
+            <?php endforeach; ?>
+        </div>
+    </div>
+</li>
                 <?php endforeach; ?>
             </ul>
 
@@ -506,58 +494,94 @@ function lee_dev_preferences_shortcode_6382() {
     </div>
 
     <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        const headers = document.querySelectorAll('.itp-accordion-header');
-        headers.forEach(header => {
-            header.addEventListener('click', function() {
-                const li = this.closest('li');
-                if(typeof UIkit !== 'undefined') {
-                    UIkit.accordion(li.closest('.uk-accordion')).toggle(li);
+document.addEventListener('DOMContentLoaded', function() {
+    
+    // --- 1. ACCORDION LOGIC (Single Open) ---
+    document.addEventListener('click', function(e) {
+        // Check if we clicked an accordion header
+        const clickedHeader = e.target.closest('.itp-accordion-header');
+        if (!clickedHeader) return;
+
+        // NEW: Close all other open accordions first
+        const allHeaders = document.querySelectorAll('.itp-accordion-header');
+        allHeaders.forEach(function(header) {
+            // If this header isn't the one we clicked, and it is currently active
+            if (header !== clickedHeader && header.classList.contains('active')) {
+                header.classList.remove('active'); // Remove the active class (resets icon)
+                const content = header.nextElementSibling;
+                if (content && content.classList.contains('itp-accordion-content')) {
+                    content.style.maxHeight = null; // Collapse the content
                 }
-            });
+            }
         });
 
-        function updateSelectAllState(container, selectAllBox) {
-            const checkboxes = container.querySelectorAll('input[type="checkbox"]:not(.itp-select-all)');
-            const checkedCount = Array.from(checkboxes).filter(cb => cb.checked).length;
+        // Toggle the active class for the clicked header
+        clickedHeader.classList.toggle('active');
 
-            if (checkedCount === 0) {
-                selectAllBox.checked = false;
-                selectAllBox.indeterminate = false;
-                selectAllBox.closest('.itp-interest-item').classList.remove('itp-partial');
-            } else if (checkedCount === checkboxes.length) {
-                selectAllBox.checked = true;
-                selectAllBox.indeterminate = false;
-                selectAllBox.closest('.itp-interest-item').classList.remove('itp-partial');
+        // Get the content div for the clicked header
+        const clickedContent = clickedHeader.nextElementSibling;
+
+        // Toggle the height for the clicked header
+        if (clickedContent && clickedContent.classList.contains('itp-accordion-content')) {
+            if (clickedContent.style.maxHeight) {
+                clickedContent.style.maxHeight = null;
             } else {
-                selectAllBox.checked = false;
-                selectAllBox.indeterminate = true;
-                selectAllBox.closest('.itp-interest-item').classList.add('itp-partial');
+                clickedContent.style.maxHeight = clickedContent.scrollHeight + 'px';
             }
         }
+    });
 
-        const selectAllBoxes = document.querySelectorAll('.itp-select-all');
-        selectAllBoxes.forEach(box => {
-            const targetId = box.getAttribute('data-target');
+    // --- 2. SELECT ALL CHECKBOX LOGIC (Unchanged) ---
+    function updateSelectAllState(container, selectAllBox) {
+        const checkboxes = container.querySelectorAll('input[type="checkbox"]:not(.itp-select-all)');
+        const checkedCount = Array.from(checkboxes).filter(cb => cb.checked).length;
+
+        if (checkedCount === 0) {
+            selectAllBox.checked = false;
+            selectAllBox.indeterminate = false;
+            selectAllBox.closest('.itp-interest-item').classList.remove('itp-partial');
+        } else if (checkedCount === checkboxes.length) {
+            selectAllBox.checked = true;
+            selectAllBox.indeterminate = false;
+            selectAllBox.closest('.itp-interest-item').classList.remove('itp-partial');
+        } else {
+            selectAllBox.checked = false;
+            selectAllBox.indeterminate = true;
+            selectAllBox.closest('.itp-interest-item').classList.add('itp-partial');
+        }
+    }
+
+    const selectAllBoxes = document.querySelectorAll('.itp-select-all');
+    
+    selectAllBoxes.forEach(box => {
+        const targetId = box.getAttribute('data-target');
+        const container = document.getElementById(targetId);
+        if (container) {
+            updateSelectAllState(container, box);
+            container.querySelectorAll('input[type="checkbox"]').forEach(child => {
+                child.addEventListener('change', function() { 
+                    updateSelectAllState(container, box); 
+                });
+            });
+        }
+    });
+
+    selectAllBoxes.forEach(box => {
+        box.addEventListener('change', function() {
+            const targetId = this.getAttribute('data-target');
             const container = document.getElementById(targetId);
             if (container) {
-                updateSelectAllState(container, box);
-                container.querySelectorAll('input[type="checkbox"]').forEach(child => {
-                    child.addEventListener('change', function() { updateSelectAllState(container, box); });
+                container.querySelectorAll('input[type="checkbox"]').forEach(cb => { 
+                    cb.checked = this.checked; 
                 });
             }
-        });
-
-        selectAllBoxes.forEach(box => {
-            box.addEventListener('change', function() {
-                const targetId = this.getAttribute('data-target');
-                const container = document.getElementById(targetId);
-                container.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = this.checked; });
-                this.closest('.itp-interest-item').classList.remove('itp-partial');
-            });
+            this.closest('.itp-interest-item').classList.remove('itp-partial');
         });
     });
-    </script>
+
+});
+</script>
+
     <?php
     return ob_get_clean();
 }
