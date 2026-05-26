@@ -220,6 +220,15 @@ function lee_dev_render_intent_popup_2841() {
         setcookie('itp_popup_shown', 'true', time() + 2592000, '/');
         $_COOKIE['itp_popup_shown'] = 'true'; 
     }
+    
+    // --- FETCH CUSTOM DESIGN SETTINGS ---
+    $colors = get_option('itp_design_settings', []);
+    
+    // Set fallback defaults if no custom colours have been saved
+    $c_heading     = esc_attr($colors['heading'] ?? '#1d2327');
+    $c_recommended = esc_attr($colors['recommended'] ?? '#e1ad01');
+    $c_button      = esc_attr($colors['button'] ?? '#2271b1');
+    $c_button_text = esc_attr($colors['button_text'] ?? '#ffffff');
     ?>
     <style id="itp-popup-styles">
         #intent-slidein {
@@ -277,7 +286,7 @@ function lee_dev_render_intent_popup_2841() {
             text-transform: uppercase;
             letter-spacing: 0.4px;
             margin-bottom: 10px;
-            background: #e1ad01;
+            background: <?php echo $c_recommended; ?>;
             color: #1d2327;
             padding: 3px 10px;
             border-radius: 3px;
@@ -289,7 +298,7 @@ function lee_dev_render_intent_popup_2841() {
             font-weight: 700;
             letter-spacing: -0.5px;
             line-height: 1.25;
-            color: #1d2327;
+            color: <?php echo $c_heading; ?>;
             text-decoration: none;
             display: block;
         }
@@ -305,22 +314,24 @@ function lee_dev_render_intent_popup_2841() {
             box-sizing: border-box;
             text-align: center;
             padding: 9px 14px;
-            background: #2271b1;
-            color: #ffffff;
+            background: <?php echo $c_button; ?>;
+            color: <?php echo $c_button_text; ?>;
             border: 0;
             border-radius: 4px;
             font-size: 13px;
             font-weight: 600;
             text-decoration: none;
             cursor: pointer;
-            transition: background 0.15s ease;
+            transition: filter 0.15s ease;
         }
-        #intent-slidein .itp-popup-btn:hover { background: #1a5a8a; color: #ffffff; }
+        /* Uses a brightness filter so dynamic colours automatically look good on hover */
+        #intent-slidein .itp-popup-btn:hover { filter: brightness(90%); color: <?php echo $c_button_text; ?>; }
+        
         #intent-slidein .itp-popup-btn-secondary {
             background: #f0f1f3;
             color: #1d2327;
         }
-        #intent-slidein .itp-popup-btn-secondary:hover { background: #e0e2e6; }
+        #intent-slidein .itp-popup-btn-secondary:hover { background: #e0e2e6; filter: none; }
         #intent-slidein .itp-popup-btn-row { display: flex; gap: 10px; margin-bottom: 6px; }
         #intent-slidein .itp-popup-btn-row .itp-popup-btn { flex: 1; }
         #intent-slidein .itp-popup-feedback-extra {
@@ -473,6 +484,15 @@ function lee_dev_add_dashboard_recommendation_5824() {
     $seasonal_badge = ($current_month >= 1 && $current_month <= 4)
         ? '<span class="itp-dashboard-badge" style="background:#e67e22;color:#ffffff;">Seasonal Priority</span>'
         : '';
+        
+    // --- FETCH CUSTOM DESIGN SETTINGS ---
+    $colors = get_option('itp_design_settings', []);
+    
+    // Set fallback defaults if no custom colours have been saved
+    $c_heading     = esc_attr($colors['heading'] ?? '#1d2327');
+    $c_recommended = esc_attr($colors['recommended'] ?? '#e1ad01');
+    $c_button      = esc_attr($colors['button'] ?? '#2271b1');
+    $c_button_text = esc_attr($colors['button_text'] ?? '#ffffff');
     ?>
     <style id="itp-dashboard-card-styles">
         .itp-dashboard-grid {
@@ -498,7 +518,7 @@ function lee_dev_add_dashboard_recommendation_5824() {
             text-transform: uppercase;
             letter-spacing: 0.4px;
             margin-bottom: 12px;
-            background: #e1ad01;
+            background: <?php echo $c_recommended; ?>;
             color: #1d2327;
             padding: 3px 10px;
             border-radius: 3px;
@@ -519,7 +539,7 @@ function lee_dev_add_dashboard_recommendation_5824() {
             font-size: 18px;
             font-weight: 700;
             letter-spacing: -0.4px;
-            color: #1d2327;
+            color: <?php echo $c_heading; ?>;
             line-height: 1.25;
         }
         .itp-dashboard-offer .itp-dashboard-desc {
@@ -531,17 +551,20 @@ function lee_dev_add_dashboard_recommendation_5824() {
         .itp-dashboard-offer .itp-dashboard-cta {
             display: inline-block;
             padding: 9px 18px;
-            background: #2271b1;
-            color: #ffffff;
+            background: <?php echo $c_button; ?>;
+            color: <?php echo $c_button_text; ?>;
             border: 0;
             border-radius: 4px;
             font-size: 13px;
             font-weight: 600;
             text-decoration: none;
             cursor: pointer;
-            transition: background 0.15s ease;
+            transition: filter 0.15s ease;
         }
-        .itp-dashboard-offer .itp-dashboard-cta:hover { background: #1a5a8a; color: #ffffff; }
+        .itp-dashboard-offer .itp-dashboard-cta:hover { 
+            filter: brightness(90%); 
+            color: <?php echo $c_button_text; ?>; 
+        }
         .itp-dashboard-divider {
             border: 0;
             border-top: 1px solid #e5e5e5;
