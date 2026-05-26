@@ -363,6 +363,12 @@ function lee_dev_render_intent_popup_2841() {
             text-align: center;
             margin: 20px 0;
         }
+        .itp-branding-link {
+            font-size:11px;
+            text-align:left;
+            padding:3px;
+            margin-top:5px;
+        }
     </style>
     <div id="intent-slidein" class="itp-popup-hidden" role="dialog" aria-live="polite">
         <button type="button" class="itp-popup-close" aria-label="Close">&times;</button>
@@ -403,6 +409,11 @@ function lee_dev_render_intent_popup_2841() {
             <a href="<?php echo esc_url($featured['url']); ?>" class="itp-popup-title"><?php echo esc_html($featured['title']); ?></a>
             <p class="itp-popup-desc"><?php echo esc_html($featured['desc']); ?></p>
             <a href="<?php echo esc_url($featured['url']); ?>" class="itp-popup-btn itp-button"><?php echo esc_html($featured['btn']); ?></a>
+        <?php endif; ?>
+        <?php if ( apply_filters( 'itp_show_popup_branding', true ) ) : ?>
+            <div class="itp-branding-link">
+                <a href="https://intenttargetpro.com" target="_blank" rel="noopener noreferrer">Powered by IntentTargetPro</a>
+            </div>
         <?php endif; ?>
     </div>
 

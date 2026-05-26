@@ -1,13 +1,13 @@
 <?php
 /**
- * Plugin Name:       IntentTarget Pro
+ * Plugin Name:       IntentTarget Core
  * Plugin URI:        https://intenttargetpro.co.uk
  * Description:       Automates audience page interest tracking and dynamic keyphrase profiling via a resource-safe background cron batch execution engine.
  * Version:           1.0.0
  * Requires at least: 6.0
  * Requires PHP:      8.0
  * Author:            Lee Dev
- * Author URI:        https://lee-dev.co.uk
+ * Author URI:        https://intenttargetpro.co.uk
  * License:           GPL v2 or later
  * License URI:       https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain:       intenttarget-pro
