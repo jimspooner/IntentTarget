@@ -144,52 +144,60 @@ function lee_dev_boost_interests_on_purchase_2718($order_id) {
 // =========================================================================
 add_action('template_redirect', 'lee_dev_intercept_search_requests_3958');
 function lee_dev_intercept_search_requests_3958() {
+    // 1. Ensure dependency is met
     if ( ! function_exists('lee_dev_is_ready_8293') || ! lee_dev_is_ready_8293() ) {
+        error_log('Search Capture: lee_dev_is_ready_8293() failed or is missing.');
         return;
     }
 
-    global $wp_query;
+    global $wp_query, $wpdb;
 
-    if ( is_search() || isset($wp_query->query_vars['s']) ) {
+    // 2. Check for standard search parameters
+    if ( is_search() || isset($wp_query->query_vars['s']) || isset($_GET['s']) ) {
+        
         $search_query = get_search_query();
-        if ( empty($search_query) && isset($wp_query->query_vars['s']) ) {
-            $search_query = $wp_query->query_vars['s'];
+        if ( empty($search_query) ) {
+            $search_query = isset($wp_query->query_vars['s']) ? $wp_query->query_vars['s'] : sanitize_text_field($_GET['s']);
         }
 
         if ( ! empty($search_query) ) {
-            $user_id = get_current_user_id();
-            if ( ! $user_id ) {
-                return;
-            }
+            
+            // Allow guest searches by defaulting to 0 if logged out
+            $user_id = get_current_user_id(); 
 
             $term = strtolower(sanitize_text_field($search_query));
             $now = time();
-            $expiry_limit = strtotime('-6 months');
 
-            $user_history = get_user_meta($user_id, 'user_search_history', true) ?: array();
-            if ( ! is_array($user_history) ) { 
-                $user_history = array(); 
-            }
-
-            if ( isset($user_history[$term]) ) {
-                $user_history[$term]['count']++;
-                $user_history[$term]['last_searched'] = $now;
-            } else {
-                $user_history[$term] = array('count' => 1, 'last_searched' => $now);
-            }
-
-            foreach ( $user_history as $query => $data ) {
-                if ( isset($data['last_searched']) && $data['last_searched'] < $expiry_limit ) {
-                    unset($user_history[$query]);
+            // 3. Only update user meta if it's a registered user
+            if ( $user_id > 0 ) {
+                $expiry_limit = strtotime('-6 months');
+                $user_history = get_user_meta($user_id, 'user_search_history', true) ?: array();
+                
+                if ( ! is_array($user_history) ) { 
+                    $user_history = array(); 
                 }
-            }
-            uasort($user_history, function($a, $b) { return $b['count'] <=> $a['count']; });
-            update_user_meta($user_id, 'user_search_history', array_slice($user_history, 0, 20, true));
 
-            global $wpdb;
+                if ( isset($user_history[$term]) ) {
+                    $user_history[$term]['count']++;
+                    $user_history[$term]['last_searched'] = $now;
+                } else {
+                    $user_history[$term] = array('count' => 1, 'last_searched' => $now);
+                }
+
+                foreach ( $user_history as $query => $data ) {
+                    if ( isset($data['last_searched']) && $data['last_searched'] < $expiry_limit ) {
+                        unset($user_history[$query]);
+                    }
+                }
+                
+                uasort($user_history, function($a, $b) { return $b['count'] <=> $a['count']; });
+                update_user_meta($user_id, 'user_search_history', array_slice($user_history, 0, 20, true));
+            }
+
+            // 4. Database Insertion Logic
             $table_name = $wpdb->prefix . 'itp_search_feedback';
-            
             $time_buffer = date('Y-m-d H:i:s', strtotime('-5 seconds'));
+            
             $duplicate_check = $wpdb->get_var($wpdb->prepare(
                 "SELECT COUNT(*) FROM $table_name WHERE user_id = %d AND search_query = %s AND submitted_at >= %s",
                 $user_id,
@@ -198,7 +206,7 @@ function lee_dev_intercept_search_requests_3958() {
             ));
 
             if ( (int) $duplicate_check === 0 ) {
-                $wpdb->insert(
+                $inserted = $wpdb->insert(
                     $table_name,
                     array(
                         'user_id'        => $user_id,
@@ -209,6 +217,11 @@ function lee_dev_intercept_search_requests_3958() {
                     ),
                     array('%d', '%s', '%s', '%s', '%s')
                 );
+
+                // 5. Debugging output if the insert fails
+                if ( false === $inserted ) {
+                    error_log('Search Capture DB Error: ' . $wpdb->last_error);
+                }
             }
         }
     }

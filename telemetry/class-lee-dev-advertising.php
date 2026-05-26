@@ -70,9 +70,20 @@ function lee_dev_get_global_priority_order_7136() {
     return $priority;
 }
 
-function lee_dev_get_global_priority_advert_7136( $excluded_intents = array() ) {
+function lee_dev_get_global_priority_advert_7136( $excluded_intents = array(), $user_id = null ) {
     $catalogue = lee_dev_get_global_priority_advert_catalogue_7136();
-    $priority  = lee_dev_get_global_priority_order_7136();
+
+    if ( $user_id === null ) {
+        $user_id = function_exists( 'get_current_user_id' ) ? get_current_user_id() : 0;
+    }
+    $user_id = absint( $user_id );
+
+    if ( $user_id > 0 && function_exists( 'lee_dev_resolve_user_intent_priority_4762' ) ) {
+        $priority = lee_dev_resolve_user_intent_priority_4762( $user_id );
+    } else {
+        $priority = lee_dev_get_global_priority_order_7136();
+    }
+
     $excluded_intents = is_array( $excluded_intents ) ? $excluded_intents : array();
 
     foreach ( $priority as $intent_key ) {
@@ -112,21 +123,27 @@ function lee_dev_get_global_priority_advert_7136( $excluded_intents = array() ) 
 // 2. GET UNIQUE DYNAMIC INTENT ADVERT DATA OBJECT
 // =========================================================================
 function lee_dev_get_intent_based_product_9384() {
-    if (!function_exists('lee_dev_is_ready_8293') || !lee_dev_is_ready_8293()) return null;
+    // Advert display only requires an authorised licence. The tracking
+    // allow-list (lee_dev_is_ready_8293) governs *who gets tracked*, not
+    // *who sees adverts*, so it must not gate this lookup or the guest
+    // fallback below would be unreachable.
+    if ( ! function_exists( 'lee_dev_has_authorised_licence_7365' ) || ! lee_dev_has_authorised_licence_7365() ) {
+        return null;
+    }
 
     $user_id = get_current_user_id();
-    $is_dashboard = (function_exists('is_account_page') && is_account_page() && !is_wc_endpoint_url());
+    $is_dashboard = ( function_exists( 'is_account_page' ) && function_exists( 'is_wc_endpoint_url' ) && is_account_page() && ! is_wc_endpoint_url() );
     $primary_data = lee_dev_get_global_priority_advert_7136();
     $secondary_data = lee_dev_get_global_priority_advert_7136( array( $primary_data['intent'] ?? '' ) );
 
-    if (get_user_meta($user_id, 'itp_disable_tracking', true)) {
+    if ( $user_id > 0 && get_user_meta( $user_id, 'itp_disable_tracking', true ) ) {
         return $is_dashboard ? ['primary' => $primary_data, 'secondary' => $secondary_data] : $primary_data;
     }
 
-    if (!is_user_logged_in()) {
+    if ( ! is_user_logged_in() ) {
         $guest_ad = [
             'title' => 'Join the Community',
-            'desc'  => 'Sign up for a free account to track your insights.',
+            'desc'  => 'Sign up for a free account',
             'url'   => '/my-account/',
             'btn'   => 'Create Free Account',
             'is_guest' => true
@@ -146,10 +163,15 @@ function lee_dev_render_intent_popup_2841() {
         return;
     }
 
-    if ( !function_exists('is_checkout') || is_checkout() || is_account_page() ) {
+    // Suppress on Woo's checkout / account pages, but render normally on
+    // non-Woo sites (where these functions are undefined).
+    if ( function_exists( 'is_checkout' ) && is_checkout() ) {
         return;
     }
-    
+    if ( function_exists( 'is_account_page' ) && is_account_page() ) {
+        return;
+    }
+
     $is_search_page = is_search();
     $featured = null;
 
@@ -199,81 +221,238 @@ function lee_dev_render_intent_popup_2841() {
         $_COOKIE['itp_popup_shown'] = 'true'; 
     }
     ?>
-    <div id="intent-slidein" class="uk-card uk-card-default uk-card-body uk-border-rounded" uk-scrollspy="cls: uk-animation-slide-right; delay: 2000; repeat: false" style="position:fixed; bottom:20px; right:80px; z-index:1000; width:300px; display:none;padding:20px 20px 25px 20px;">
-        <button class="uk-close-small uk-position-top-right" style="top:10px;right:10px;" type="button" uk-close></button>
-        
+    <style id="itp-popup-styles">
+        #intent-slidein {
+            position: fixed;
+            bottom: 20px;
+            right: 24px;
+            z-index: 99990;
+            width: 320px;
+            max-width: calc(100vw - 32px);
+            box-sizing: border-box;
+            padding: 20px 20px 22px;
+            background: #ffffff;
+            color: #1d2327;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.18), 0 2px 6px rgba(15, 23, 42, 0.08);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+            font-size: 14px;
+            line-height: 1.4;
+            opacity: 0;
+            transform: translateX(120%);
+            transition: transform 0.5s cubic-bezier(0.25, 0.8, 0.25, 1), opacity 0.4s ease;
+            pointer-events: none;
+        }
+        #intent-slidein.itp-popup-visible {
+            opacity: 1;
+            transform: translateX(0);
+            pointer-events: auto;
+        }
+        #intent-slidein.itp-popup-hidden { display: none !important; }
+        #intent-slidein .itp-popup-close {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            width: 24px;
+            height: 24px;
+            background: transparent;
+            border: 0;
+            border-radius: 50%;
+            color: #5b6066;
+            cursor: pointer;
+            font-size: 18px;
+            line-height: 1;
+            font-weight: 400;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #intent-slidein .itp-popup-close:hover { background: #f0f1f3; color: #111; }
+        #intent-slidein .itp-popup-label {
+            display: inline-block;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            margin-bottom: 10px;
+            background: #e1ad01;
+            color: #1d2327;
+            padding: 3px 10px;
+            border-radius: 3px;
+        }
+        #intent-slidein .itp-popup-greet { margin: 4px 0 6px; font-size: 13px; color: #5b6066; }
+        #intent-slidein .itp-popup-title {
+            margin: 4px 0 8px;
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            line-height: 1.25;
+            color: #1d2327;
+            text-decoration: none;
+            display: block;
+        }
+        #intent-slidein a.itp-popup-title:hover { text-decoration: underline; }
+        #intent-slidein .itp-popup-desc {
+            margin: 0 0 16px;
+            font-size: 13px;
+            color: #5b6066;
+        }
+        #intent-slidein .itp-popup-btn {
+            display: block;
+            width: 100%;
+            box-sizing: border-box;
+            text-align: center;
+            padding: 9px 14px;
+            background: #2271b1;
+            color: #ffffff;
+            border: 0;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: 600;
+            text-decoration: none;
+            cursor: pointer;
+            transition: background 0.15s ease;
+        }
+        #intent-slidein .itp-popup-btn:hover { background: #1a5a8a; color: #ffffff; }
+        #intent-slidein .itp-popup-btn-secondary {
+            background: #f0f1f3;
+            color: #1d2327;
+        }
+        #intent-slidein .itp-popup-btn-secondary:hover { background: #e0e2e6; }
+        #intent-slidein .itp-popup-btn-row { display: flex; gap: 10px; margin-bottom: 6px; }
+        #intent-slidein .itp-popup-btn-row .itp-popup-btn { flex: 1; }
+        #intent-slidein .itp-popup-feedback-extra {
+            margin-top: 12px;
+            border-top: 1px solid #eee;
+            padding-top: 10px;
+        }
+        #intent-slidein .itp-popup-feedback-label {
+            display: block;
+            font-size: 11px;
+            font-weight: 700;
+            margin-bottom: 4px;
+            color: #1d2327;
+        }
+        #intent-slidein .itp-popup-feedback-extra textarea {
+            width: 100%;
+            box-sizing: border-box;
+            font-size: 12px;
+            padding: 6px 8px;
+            border: 1px solid #c3c4c7;
+            border-radius: 3px;
+            font-family: inherit;
+            resize: vertical;
+        }
+        #intent-slidein .itp-popup-thanks {
+            font-size: 13px;
+            font-weight: 700;
+            color: #46b450;
+            text-align: center;
+            margin: 20px 0;
+        }
+    </style>
+    <div id="intent-slidein" class="itp-popup-hidden" role="dialog" aria-live="polite">
+        <button type="button" class="itp-popup-close" aria-label="Close">&times;</button>
+
         <?php if ( $is_search_page ) : ?>
-            <span class="uk-label" style="font-size:11px; margin-bottom:10px;background-color:#e1ad01;padding:3px 10px;">Search Feedback</span>
+            <span class="itp-popup-label">Search Feedback</span>
             <?php if ( isset($_POST['itp_search_feedback_submit']) ) : ?>
-                <p style="font-size:13px; font-weight:bold; color:#46b450; text-align:center; margin:20px 0;">Thank you for your feedback!</p>
-                <script>setTimeout(function(){ document.getElementById('intent-slidein').style.display = 'none'; }, 2000);</script>
+                <p class="itp-popup-thanks">Thank you for your feedback!</p>
+                <script>setTimeout(function(){ var p = document.getElementById('intent-slidein'); if (p) { p.classList.remove('itp-popup-visible'); p.classList.add('itp-popup-hidden'); } }, 2000);</script>
             <?php else : ?>
-                <h4 class="uk-text-spot1 uk-text-bold" style="margin: 5px 0 10px 0; letter-spacing:-1px; line-height: 1.2;">Did you find what you were looking for?</h4>
+                <h4 class="itp-popup-title">Did you find what you were looking for?</h4>
                 <form method="post" action="">
                     <input type="hidden" name="search_query" value="<?php echo esc_attr(get_search_query()); ?>">
                     <input type="hidden" name="itp_search_feedback_submit" value="1">
-                    <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-                        <button type="submit" name="found_result" value="yes" class="uk-button-spot1" style="font-size:.8rem; flex: 1; padding: 5px; cursor: pointer;">Yes</button>
-                        <button type="button" id="itp-search-no-toggle" class="uk-button-spot1" style="font-size:.8rem; flex: 1; padding: 5px; background: #666; cursor: pointer;">No</button>
+                    <div class="itp-popup-btn-row">
+                        <button type="submit" name="found_result" value="yes" class="itp-popup-btn">Yes</button>
+                        <button type="button" id="itp-search-no-toggle" class="itp-popup-btn itp-popup-btn-secondary">No</button>
                     </div>
-                    <div id="itp-feedback-extra" style="display: none; margin-top: 12px; border-top: 1px solid #eee; padding-top: 10px;">
+                    <div id="itp-feedback-extra" class="itp-popup-feedback-extra" style="display:none;">
                         <input type="hidden" id="itp-found-result-hidden" name="found_result" value="no" disabled>
-                        <label style="display: block; font-size: 11px; font-weight: bold;">What were you hunting for today?</label>
-                        <textarea name="feedback_notes" rows="2" style="width: 100%; font-size: 12px;" placeholder="Tell us how we can help..."></textarea>
-                        <button type="submit" onclick="document.getElementById('itp-found-result-hidden').disabled=false;" class="uk-button-spot1" style="margin-top: 8px; font-size:.75rem; width:100%; background: #333;">Submit Details</button>
+                        <label class="itp-popup-feedback-label">What were you hunting for today?</label>
+                        <textarea name="feedback_notes" rows="2" placeholder="Tell us how we can help..."></textarea>
+                        <button type="submit" onclick="document.getElementById('itp-found-result-hidden').disabled=false;" class="itp-popup-btn" style="margin-top:8px;">Submit Details</button>
                     </div>
                 </form>
                 <script>
                 document.addEventListener('DOMContentLoaded', function() {
-                    const btn = document.getElementById('itp-search-no-toggle');
+                    var btn = document.getElementById('itp-search-no-toggle');
                     if (btn) btn.addEventListener('click', function(e) { e.preventDefault(); document.getElementById('itp-feedback-extra').style.display = 'block'; });
                 });
                 </script>
             <?php endif; ?>
-        <?php elseif (isset($featured)) : ?>
-            <span class="uk-label" style="font-size:11px; margin-bottom:10px;background-color:#e1ad01;padding:3px 10px;">Recommended</span>
-            <?php $cu = wp_get_current_user(); if (0 !== $cu->ID) echo '<p>Hi, ' . esc_html($cu->display_name).'</p>'; ?>
-            <a href="<?php echo esc_url($featured['url']); ?>"><h4 class="uk-text-spot1 uk-text-bold" style="margin: 5px 0;letter-spacing:-1px;"><?php echo esc_html($featured['title']); ?></h4></a>
-            <p class="uk-text-meta uk-margin-medium-bottom"><?php echo esc_html($featured['desc']); ?></p>
-            <a href="<?php echo esc_url($featured['url']); ?>" class="uk-button-spot1 itp-button" style="font-size:.8rem;width:100%;"><?php echo esc_html($featured['btn']); ?></a>
+        <?php elseif ( isset($featured) ) : ?>
+            <span class="itp-popup-label">Recommended</span>
+            <?php $cu = wp_get_current_user(); if ( 0 !== $cu->ID ) : ?>
+                <p class="itp-popup-greet">Hi, <?php echo esc_html($cu->display_name); ?></p>
+            <?php endif; ?>
+            <a href="<?php echo esc_url($featured['url']); ?>" class="itp-popup-title"><?php echo esc_html($featured['title']); ?></a>
+            <p class="itp-popup-desc"><?php echo esc_html($featured['desc']); ?></p>
+            <a href="<?php echo esc_url($featured['url']); ?>" class="itp-popup-btn itp-button"><?php echo esc_html($featured['btn']); ?></a>
         <?php endif; ?>
     </div>
 
     <script>
     (function() {
-        document.addEventListener('DOMContentLoaded', function() {
-            const popup = document.getElementById('intent-slidein');
-            if (!popup) return;
-            
-            const actionBtn = popup.querySelector('.itp-button');
-            const closeBtn = popup.querySelector('.uk-close-small');
-            const cookies = document.cookie;
-            
-            if (!cookies.includes('itp_popup_shown=') && !cookies.includes('itp_popup_interacted=')) {
-                popup.style.display = 'block';
+        var ajaxUrl = <?php echo wp_json_encode( admin_url( 'admin-ajax.php' ) ); ?>;
+        var userId  = <?php echo wp_json_encode( (string) get_current_user_id() ); ?>;
+        var revealDelayMs = 1500;
+
+        function readCookies() { return ( typeof document !== 'undefined' && document.cookie ) ? document.cookie : ''; }
+        function hasSuppressionCookie() {
+            var c = readCookies();
+            return c.indexOf( 'itp_popup_shown=' ) !== -1 || c.indexOf( 'itp_popup_interacted=' ) !== -1;
+        }
+        function hide( popup ) {
+            popup.classList.remove( 'itp-popup-visible' );
+            window.setTimeout( function() { popup.classList.add( 'itp-popup-hidden' ); }, 450 );
+        }
+        function reveal( popup ) {
+            popup.classList.remove( 'itp-popup-hidden' );
+            // Force reflow so the CSS transition triggers from the off-screen state.
+            void popup.offsetWidth;
+            popup.classList.add( 'itp-popup-visible' );
+        }
+
+        document.addEventListener( 'DOMContentLoaded', function() {
+            var popup = document.getElementById( 'intent-slidein' );
+            if ( ! popup ) { return; }
+
+            var closeBtn  = popup.querySelector( '.itp-popup-close' );
+            var actionBtn = popup.querySelector( 'a.itp-button' );
+
+            if ( ! hasSuppressionCookie() ) {
+                window.setTimeout( function() { reveal( popup ); }, revealDelayMs );
             }
 
-            if (closeBtn) {
-                closeBtn.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    document.cookie = "itp_popup_shown=true; max-age=86400; path=/; samesite=strict";
-                    popup.style.display = 'none';
-                });
+            if ( closeBtn ) {
+                closeBtn.addEventListener( 'click', function( ev ) {
+                    ev.preventDefault();
+                    document.cookie = 'itp_popup_shown=true; max-age=86400; path=/; samesite=strict';
+                    hide( popup );
+                } );
             }
-            
-            if (actionBtn && actionBtn.tagName === 'A') {
-                actionBtn.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    const url = this.getAttribute('href');
-                    document.cookie = "itp_popup_interacted=true; max-age=1209600; path=/; samesite=strict";
-                    fetch('<?php echo admin_url('admin-ajax.php'); ?>', {
+
+            if ( actionBtn && actionBtn.tagName === 'A' ) {
+                actionBtn.addEventListener( 'click', function( ev ) {
+                    ev.preventDefault();
+                    var url = this.getAttribute( 'href' );
+                    document.cookie = 'itp_popup_interacted=true; max-age=1209600; path=/; samesite=strict';
+                    var body = new URLSearchParams();
+                    body.set( 'action', 'itp_mark_high_engagement' );
+                    body.set( 'user_id', userId );
+                    fetch( ajaxUrl, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                        body: new URLSearchParams({ action: 'itp_mark_high_engagement', user_id: '<?php echo get_current_user_id(); ?>' })
-                    }).then(() => { window.location.href = url; }).catch(() => { window.location.href = url; });
-                });
+                        credentials: 'same-origin',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+                        body: body.toString()
+                    } ).then( function() { window.location.href = url; } ).catch( function() { window.location.href = url; } );
+                } );
             }
-        });
+        } );
     })();
     </script>
     <?php
@@ -291,29 +470,101 @@ function lee_dev_add_dashboard_recommendation_5824() {
     if (!$adverts || !isset($adverts['primary'])) return;
 
     $current_month = (int) date('n');
-    $seasonal_badge = ($current_month >= 1 && $current_month <= 4) ? '<span class="uk-badge uk-margin-small-right" style="background:#e67e22;">Seasonal Priority</span>' : '';
+    $seasonal_badge = ($current_month >= 1 && $current_month <= 4)
+        ? '<span class="itp-dashboard-badge" style="background:#e67e22;color:#ffffff;">Seasonal Priority</span>'
+        : '';
     ?>
-    <div class="uk-child-width-1-1 uk-child-width-1-2@m" uk-grid>
-        <div>
-            <div class="itp-dashboard-offer" style="margin-top: 30px; padding: 20px; border: 1px solid #e5e5e5; border-radius: 5px;">
-                <span class="uk-label" style="font-size:11px; margin-bottom:10px;background-color:#e1ad01;padding:3px 10px;">Recommended</span>
-                <h3 class="uk-text-spot1 uk-margin-remove-top"><?php echo $seasonal_badge; ?><?php echo esc_html($adverts['primary']['title']); ?></h3>
-                <p class="uk-margin-medium-bottom" style="color:#999;"><?php echo esc_html($adverts['primary']['desc']); ?></p>
-                <a href="<?php echo esc_url($adverts['primary']['url']); ?>" class="uk-button-spot1"><?php echo esc_html($adverts['primary']['btn']); ?></a>
-            </div>
+    <style id="itp-dashboard-card-styles">
+        .itp-dashboard-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 20px;
+            margin-top: 30px;
+        }
+        @media (min-width: 768px) {
+            .itp-dashboard-grid { grid-template-columns: 1fr 1fr; }
+        }
+        .itp-dashboard-offer {
+            padding: 20px;
+            border: 1px solid #e5e5e5;
+            border-radius: 6px;
+            background: #ffffff;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+        }
+        .itp-dashboard-offer .itp-dashboard-label {
+            display: inline-block;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            margin-bottom: 12px;
+            background: #e1ad01;
+            color: #1d2327;
+            padding: 3px 10px;
+            border-radius: 3px;
+        }
+        .itp-dashboard-offer .itp-dashboard-badge {
+            display: inline-block;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            padding: 2px 8px;
+            margin-right: 8px;
+            border-radius: 999px;
+            vertical-align: middle;
+        }
+        .itp-dashboard-offer .itp-dashboard-title {
+            margin: 0 0 10px;
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: -0.4px;
+            color: #1d2327;
+            line-height: 1.25;
+        }
+        .itp-dashboard-offer .itp-dashboard-desc {
+            margin: 0 0 18px;
+            color: #5b6066;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+        .itp-dashboard-offer .itp-dashboard-cta {
+            display: inline-block;
+            padding: 9px 18px;
+            background: #2271b1;
+            color: #ffffff;
+            border: 0;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: 600;
+            text-decoration: none;
+            cursor: pointer;
+            transition: background 0.15s ease;
+        }
+        .itp-dashboard-offer .itp-dashboard-cta:hover { background: #1a5a8a; color: #ffffff; }
+        .itp-dashboard-divider {
+            border: 0;
+            border-top: 1px solid #e5e5e5;
+            margin: 28px 0;
+        }
+    </style>
+    <div class="itp-dashboard-grid">
+        <div class="itp-dashboard-offer">
+            <span class="itp-dashboard-label">Recommended</span>
+            <h3 class="itp-dashboard-title"><?php echo $seasonal_badge; ?><?php echo esc_html( $adverts['primary']['title'] ); ?></h3>
+            <p class="itp-dashboard-desc"><?php echo esc_html( $adverts['primary']['desc'] ); ?></p>
+            <a href="<?php echo esc_url( $adverts['primary']['url'] ); ?>" class="itp-dashboard-cta"><?php echo esc_html( $adverts['primary']['btn'] ); ?></a>
         </div>
-        <?php if (isset($adverts['secondary'])) : ?>
-            <div>
-                <div class="itp-dashboard-offer" style="margin-top: 30px; padding: 20px; border: 1px solid #e5e5e5; border-radius: 5px;">
-                    <span class="uk-label" style="font-size:11px; margin-bottom:10px;background-color:#e1ad01;padding:3px 10px;">Recommended</span>
-                    <h3 class="uk-text-spot1 uk-margin-remove-top"><?php echo esc_html($adverts['secondary']['title']); ?></h3>
-                    <p class="uk-margin-medium-bottom" style="color:#999;"><?php echo esc_html($adverts['secondary']['desc']); ?></p>
-                    <a href="<?php echo esc_url($adverts['secondary']['url']); ?>" class="uk-button-spot1"><?php echo esc_html($adverts['secondary']['btn']); ?></a>
-                </div>
+        <?php if ( isset( $adverts['secondary'] ) ) : ?>
+            <div class="itp-dashboard-offer">
+                <span class="itp-dashboard-label">Recommended</span>
+                <h3 class="itp-dashboard-title"><?php echo esc_html( $adverts['secondary']['title'] ); ?></h3>
+                <p class="itp-dashboard-desc"><?php echo esc_html( $adverts['secondary']['desc'] ); ?></p>
+                <a href="<?php echo esc_url( $adverts['secondary']['url'] ); ?>" class="itp-dashboard-cta"><?php echo esc_html( $adverts['secondary']['btn'] ); ?></a>
             </div>
         <?php endif; ?>
     </div>
-    <hr class="uk-divider-icon">
+    <hr class="itp-dashboard-divider">
     <?php
 }
 

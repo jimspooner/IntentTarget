@@ -43,6 +43,7 @@ spl_autoload_register( 'lee_dev_initialise_plugin_autoloader_4827' );
 // 1. SAFE LOAD DECOUPLED COMPONENT SYSTEM
 require_once plugin_dir_path( __FILE__ ) . 'core/class-lee-dev-transient.php';
 require_once plugin_dir_path( __FILE__ ) . 'core/class-lee-dev-access.php';
+require_once plugin_dir_path( __FILE__ ) . 'core/class-lee-dev-intents.php';
 require_once plugin_dir_path( __FILE__ ) . 'core/class-lee-dev-parser.php';
 require_once plugin_dir_path( __FILE__ ) . 'core/class-lee-dev-cron.php';
 require_once plugin_dir_path( __FILE__ ) . 'core/class-lee-dev-hooks.php';

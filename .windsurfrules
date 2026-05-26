@@ -15,3 +15,9 @@
 ## Memory & Performance Guardrails
 - Core keyword loops must run inside background chunked batch cron sequences ('cit_hourly_tracking_batch_event').
 - Limit raw processing blocks to a maximum of 50 assets per processing cycle to safeguard host server RAM.
+
+## Add ON development Rules
+- Never create separate plugins or separate .zip files for new features.
+- All add-on code (e.g., Webhooks, Quizzes, AI) must be built directly into the core intenttargetpro codebase.
+- Feature Gating: Every new add-on must be wrapped in the lee_dev_is_addon_active_3812( 'addon-slug' ) helper method. If the user has not purchased the add-on (verified via the Master Hub API payload saved in wp_options), the code must remain completely dormant.
+- Visibility: The UI/settings for the add-on should remain visible in the admin dashboard but be disabled, showing a "Purchase Add-On" up-sell button if the gate returns false.

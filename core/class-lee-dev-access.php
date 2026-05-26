@@ -45,7 +45,12 @@ function lee_dev_debug_log_event_6158( $event_name, $context = array() ) {
     $safe_event_name = sanitize_text_field( (string) $event_name );
     $safe_context    = is_array( $context ) ? wp_json_encode( $context ) : sanitize_text_field( (string) $context );
 
-    error_log( '[IntentTarget Pro] ' . $safe_event_name . ' ' . $safe_context );
+    if ( defined('ITP_DEV_DEBUG') && ITP_DEV_DEBUG ) {
+    error_log( '[IntentTarget Pro] bootstrap.loaded ' . json_encode($status_array) );
+}
+
+    
+    //error_log( '[IntentTarget Pro] ' . $safe_event_name . ' ' . $safe_context );
 }
 
 add_action( 'admin_init', 'lee_dev_process_debug_logging_toggle_2846' );

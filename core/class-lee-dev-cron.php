@@ -96,8 +96,12 @@ function lee_dev_run_hourly_content_keyword_scan_7394() {
     }
 
     $offset = max( 0, (int) get_option( 'itp_content_scan_offset_7394', 0 ) );
+    $scannable_post_types = array( 'post', 'page' );
+    if ( class_exists( 'WooCommerce' ) ) {
+        $scannable_post_types[] = 'product';
+    }
     $query = new WP_Query( array(
-        'post_type'              => array( 'post', 'page' ),
+        'post_type'              => $scannable_post_types,
         'post_status'            => 'publish',
         'posts_per_page'         => 50,
         'offset'                 => $offset,
@@ -127,8 +131,10 @@ function lee_dev_run_hourly_content_keyword_scan_7394() {
             continue;
         }
 
-        $content_body = lee_dev_normalise_content_body_4837( $post->post_content );
-        if ( $content_body === '' ) {
+        $corpus = function_exists( 'lee_dev_build_asset_search_corpus_4216' )
+            ? lee_dev_build_asset_search_corpus_4216( $post )
+            : lee_dev_normalise_content_body_4837( $post->post_content );
+        if ( $corpus === '' ) {
             continue;
         }
 
@@ -136,7 +142,7 @@ function lee_dev_run_hourly_content_keyword_scan_7394() {
         $asset_tracking_labels = array();
         foreach ( $keyword_groups as $group_key => $phrases ) {
             foreach ( $phrases as $phrase ) {
-                if ( $phrase !== '' && stripos( $content_body, $phrase ) !== false ) {
+                if ( $phrase !== '' && stripos( $corpus, $phrase ) !== false ) {
                     $asset_matches[$group_key][] = $phrase;
                     $asset_tracking_labels[] = $phrase;
                 }
@@ -144,6 +150,9 @@ function lee_dev_run_hourly_content_keyword_scan_7394() {
         }
 
         $asset_tracking_labels = array_values( array_unique( array_map( 'sanitize_text_field', $asset_tracking_labels ) ) );
+        if ( function_exists( 'lee_dev_apply_manual_label_overrides_2937' ) ) {
+            $asset_tracking_labels = lee_dev_apply_manual_label_overrides_2937( $asset_tracking_labels, $asset_id );
+        }
         if ( ! empty( $asset_tracking_labels ) ) {
             update_post_meta( $asset_id, '_itp_tracking_labels', $asset_tracking_labels );
         } else {

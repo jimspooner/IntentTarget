@@ -20,6 +20,7 @@ add_action( 'admin_menu', 'lee_dev_register_master_hub_menu_5728' );
 add_action( 'admin_post_itp_create_licence', 'lee_dev_process_master_hub_code_creation_6274' );
 add_action( 'admin_post_itp_deactivate_licence', 'lee_dev_process_master_hub_deactivation_7634' );
 add_action( 'rest_api_init', 'lee_dev_register_master_hub_api_endpoints_9381' );
+add_action( 'admin_post_itp_reactivate_licence', 'lee_dev_process_master_hub_reactivation_8821' );
 
 function lee_dev_get_master_hub_table_name_4826() {
     global $wpdb;
@@ -95,6 +96,8 @@ function lee_dev_render_master_hub_dashboard_1109() {
             echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Licence status switched to deactivated.', 'intenttarget-pro' ) . '</p></div>';
         } elseif ( $notice_status === 'created' ) {
             echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'New licence code created and ready to issue to a customer.', 'intenttarget-pro' ) . '</p></div>';
+        } elseif ( $notice_status === 'reactivated' ) {
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Licence status restored successfully.', 'intenttarget-pro' ) . '</p></div>';
         } elseif ( $notice_status === 'missing' ) {
             echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( 'The selected licence could not be found.', 'intenttarget-pro' ) . '</p></div>';
         }
@@ -160,7 +163,12 @@ function lee_dev_render_master_hub_dashboard_1109() {
                                         <button type="submit" class="button button-secondary"><?php echo esc_html__( 'Deactivate', 'intenttarget-pro' ); ?></button>
                                     </form>
                                 <?php else : ?>
-                                    <span><?php echo esc_html__( 'Deactivated', 'intenttarget-pro' ); ?></span>
+                                    <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+        <input type="hidden" name="action" value="itp_reactivate_licence" />
+        <input type="hidden" name="licence_id" value="<?php echo esc_attr( (string) $licence->id ); ?>" />
+        <?php wp_nonce_field( 'itp_reactivate_licence_' . $licence->id, 'itp_reactivate_nonce' ); ?>
+        <button type="submit" class="button button-primary"><?php echo esc_html__( 'Reactivate', 'intenttarget-pro' ); ?></button>
+    </form>
                                 <?php endif; ?>
                             </td>
                         </tr>
@@ -373,6 +381,7 @@ function lee_dev_handle_remote_activation_request_6842( WP_REST_Request $request
         $licence_code
     ) );
 
+    // 1. Check if the code actually exists
     if ( ! $existing ) {
         return new WP_REST_Response( array(
             'success'      => false,
@@ -382,6 +391,7 @@ function lee_dev_handle_remote_activation_request_6842( WP_REST_Request $request
         ), 403 );
     }
 
+    // 2. Check if an admin manually deactivated this code
     if ( $existing && $existing->status === 'deactivated' ) {
         $wpdb->update(
             $table_name,
@@ -404,6 +414,37 @@ function lee_dev_handle_remote_activation_request_6842( WP_REST_Request $request
         ), 403 );
     }
 
+    // 3. DOMAIN LOCK CHECK: If the code is already active, ensure the domains match!
+    if ( $existing->status === 'active' && ! empty( $existing->mapped_domain ) ) {
+        
+        // Strip protocols and www to ensure a clean match just in case
+        $saved_clean_domain = str_replace( array('http://', 'https://', 'www.'), '', $existing->mapped_domain );
+        $incoming_clean_domain = str_replace( array('http://', 'https://', 'www.'), '', $mapped_domain );
+
+        if ( rtrim( $saved_clean_domain, '/' ) !== rtrim( $incoming_clean_domain, '/' ) ) {
+            
+            // Log the unauthorised attempt so you can see it in the dashboard, but DO NOT overwrite the mapped domain
+            $wpdb->update(
+                $table_name,
+                array(
+                    'last_request_ip' => $request_ip,
+                    'last_seen_at'    => current_time( 'mysql' ),
+                ),
+                array( 'id' => (int) $existing->id ),
+                array( '%s', '%s' ),
+                array( '%d' )
+            );
+
+            return new WP_REST_Response( array(
+                'success'      => false,
+                'status'       => 'unauthorised',
+                'licence_code' => $licence_code,
+                'message'      => 'This licence is already locked to a different domain. Please purchase a new licence or contact support to transfer it.',
+            ), 403 );
+        }
+    }
+
+    // 4. First time activation OR subsequent verification from the CORRECT domain
     $wpdb->update(
         $table_name,
         array(
@@ -413,7 +454,7 @@ function lee_dev_handle_remote_activation_request_6842( WP_REST_Request $request
             'status'           => 'active',
             'activation_count' => (int) $existing->activation_count + 1,
             'last_request_ip'  => $request_ip,
-            'activated_at'     => current_time( 'mysql' ),
+            'activated_at'     => empty( $existing->activated_at ) ? current_time( 'mysql' ) : $existing->activated_at,
             'last_seen_at'     => current_time( 'mysql' ),
         ),
         array( 'id' => (int) $existing->id ),
@@ -439,4 +480,43 @@ function lee_dev_handle_licence_verification_request_1842( WP_REST_Request $requ
     }
 
     return new WP_REST_Response( $data, $response->get_status() );
+}
+
+function lee_dev_process_master_hub_reactivation_8821() {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'You are not authorised to reactivate licences.', 'intenttarget-pro' ) );
+    }
+
+    $licence_id = isset( $_POST['licence_id'] ) ? absint( $_POST['licence_id'] ) : 0;
+    check_admin_referer( 'itp_reactivate_licence_' . $licence_id, 'itp_reactivate_nonce' );
+
+    global $wpdb;
+    $table_name = lee_dev_get_master_hub_table_name_4826();
+    
+    // Check if the licence has a mapped domain to determine correct restored status
+    $existing = $wpdb->get_row( $wpdb->prepare( "SELECT mapped_domain FROM $table_name WHERE id = %d", $licence_id ) );
+    
+    if ( $existing ) {
+        $new_status = ! empty( $existing->mapped_domain ) ? 'active' : 'pending';
+        
+        $updated = $wpdb->update(
+            $table_name,
+            array(
+                'status'         => $new_status,
+                'deactivated_at' => null // Clear the deactivation timestamp
+            ),
+            array( 'id' => $licence_id ),
+            array( '%s', '%s' ),
+            array( '%d' )
+        );
+        $status = $updated ? 'reactivated' : 'missing';
+    } else {
+        $status = 'missing';
+    }
+
+    wp_safe_redirect( add_query_arg( array(
+        'page'       => 'intenttarget-master-hub',
+        'itp-status' => $status,
+    ), admin_url( 'admin.php' ) ) );
+    exit;
 }

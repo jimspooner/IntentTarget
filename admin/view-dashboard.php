@@ -2,64 +2,25 @@
 if ( ! defined( 'ABSPATH' ) ) exit;
 
 if ( ! function_exists( 'lee_dev_get_filtered_taxonomy_groups_7316' ) ) {
+    /**
+     * Compatibility wrapper.
+     *
+     * Returns the hardcoded five-bucket intent matrix as the 'groups' payload
+     * along with the centralised stop-word blacklist used by the scanner. The
+     * function name is preserved to avoid touching every caller, but the
+     * behaviour now reflects the IntentTarget Pro fixed intent matrix.
+     */
     function lee_dev_get_filtered_taxonomy_groups_7316() {
-        $default_blacklist = array(
-            'uncategorised',
-            'uncategorized',
-            'exclude-from-catalog',
-            'exclude-from-search',
-            'featured',
-            'the',
-            'and',
-            'for',
-            'with',
-            'from',
-            'this',
-            'that',
-            'your',
-            'will',
-            'have'
-        );
+        $intent_groups = function_exists( 'lee_dev_get_intent_categories_3812' )
+            ? lee_dev_get_intent_categories_3812()
+            : array();
 
-        $filtered_blacklist = apply_filters( 'lee_dev_taxonomy_blacklist_7316', $default_blacklist );
-        if ( ! is_array( $filtered_blacklist ) ) {
-            $filtered_blacklist = $default_blacklist;
-        }
-
-        $blacklist = array_map( 'sanitize_title', $filtered_blacklist );
-        $term_groups = array();
-        $target_taxonomies = array( 'category' );
-        if ( class_exists( 'WooCommerce' ) ) {
-            $target_taxonomies[] = 'product_cat';
-        }
-
-        $terms = get_terms( array(
-            'taxonomy'   => $target_taxonomies,
-            'hide_empty' => false,
-        ) );
-
-        if ( is_wp_error( $terms ) || empty( $terms ) ) {
-            return array(
-                'groups'    => $term_groups,
-                'blacklist' => $blacklist,
-            );
-        }
-
-        foreach ( $terms as $term ) {
-            if ( ! is_object( $term ) || empty( $term->slug ) ) {
-                continue;
-            }
-
-            $term_slug = sanitize_title( $term->slug );
-            if ( in_array( $term_slug, $blacklist, true ) ) {
-                continue;
-            }
-
-            $term_groups[$term_slug] = $term->name . ( class_exists( 'WooCommerce' ) && $term->taxonomy === 'product_cat' ? ' (Product Category)' : ' (Category)' );
-        }
+        $blacklist = function_exists( 'lee_dev_get_intent_scanner_blacklist_9447' )
+            ? lee_dev_get_intent_scanner_blacklist_9447()
+            : array();
 
         return array(
-            'groups'    => $term_groups,
+            'groups'    => $intent_groups,
             'blacklist' => $blacklist,
         );
     }
@@ -343,111 +304,173 @@ $active_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'dashboa
             
             if ( isset($_POST['itp_trigger_scan']) ) {
                 check_admin_referer('itp_scanner_action', 'itp_scanner_nonce');
-                
-                $scanned_items = [];
-                
-                $blacklist = array_values( array_unique( array_merge( $taxonomy_blacklist, [
-                    'bishops', 'subdued', 'subdue', 'subside', 'subsided', 'subsiding', 
-                    'subject', 'subjects', 'subjectof', 'subsequent', 'subsequently', 
-                    'subordinate', 'subdivided', 'subdivide', 'subtraction', 'subtly', 
-                    'subtle', 'substandard', 'republic', 'republicans', 'disorder', 
-                    'uncategorised', 'uncategorized', 'sortorder', 'subsumed', 'subsuming',
-                    'subsume', 'substations', 'sublease', 'sweatshop', 'the', 'and', 'for', 
-                    'und', 'with', 'from', 'this', 'that', 'your', 'will', 'have'
-                ] ) ) );
 
-                global $wpdb;
-                $posts_table = $wpdb->posts;
+                $blacklist = $taxonomy_blacklist;
+                $candidate_pool = array();
 
-                $raw_posts = $wpdb->get_results("
-                    SELECT ID, post_title, post_type 
-                    FROM {$posts_table} 
-                    WHERE post_status = 'publish' 
-                    AND post_type NOT IN ('revision', 'nav_menu_item', 'attachment', 'custom_css', 'customize_changeset')
-                    LIMIT 400
-                ");
-                
-                if ( ! empty($raw_posts) ) {
-                    foreach ( $raw_posts as $post_obj ) {
-                        $current_type = ! empty($post_obj->post_type) ? (string) $post_obj->post_type : 'post';
-                        
-                        if ( $current_type === 'post' || $current_type === 'page' ) {
-                            continue;
-                        }
-                        
-                        $assigned_cats = [];
-                        $target_taxonomies = array( 'category' );
-                        if ( class_exists( 'WooCommerce' ) ) {
-                            $target_taxonomies[] = 'product_cat';
-                        }
-                        $post_terms = wp_get_object_terms( $post_obj->ID, $target_taxonomies );
-                        if ( ! is_wp_error( $post_terms ) && ! empty( $post_terms ) ) {
-                            foreach ( $post_terms as $term ) {
-                                $assigned_cats[] = $term->slug;
-                            }
-                        }
+                $batch_limit = function_exists( 'lee_dev_get_intent_dictionary_capacity_5083' )
+                    ? lee_dev_get_intent_dictionary_capacity_5083()
+                    : 50;
 
-                        if ( empty($assigned_cats) ) {
-                            continue;
-                        }
+                $assets_scanned = array(
+                    'product' => 0,
+                    'post'    => 0,
+                    'page'    => 0,
+                );
 
-                        $title_clean = strtolower($post_obj->post_title);
-                        $title_clean = str_replace(['&nbsp;', "\xc2\xa0", '-', '_'], ' ', $title_clean);
-                        $title_clean = preg_replace('/[.,\/#!$%\^&\*;:{}=\-_`~()?"’‘“”\n\r]/', ' ', $title_clean);
-                        $title_words = array_filter(array_map('trim', explode(' ', $title_clean)));
-
-                        if ( empty($title_words) ) continue;
-                        $full_title_phrase = implode(' ', $title_words);
-
-                        foreach ( $assigned_cats as $cat_slug ) {
-                            if ( ! isset($master_groups[$cat_slug]) ) continue;
-
-                            if ( count($title_words) > 1 ) {
-                                $scanned_items[$cat_slug][] = $full_title_phrase;
-                            }
-                            foreach ( $title_words as $tw ) {
-                                if ( strlen($tw) >= 3 && ! in_array($tw, $blacklist, true) && preg_match('/^[a-z]+$/', $tw) ) {
-                                    $scanned_items[$cat_slug][] = $tw;
+                /**
+                 * Prong 1 — WooCommerce products: title + product taxonomies + content (incl. excerpt + short description).
+                 */
+                if ( class_exists( 'WooCommerce' ) ) {
+                    $product_query = new WP_Query( array(
+                        'post_type'              => 'product',
+                        'post_status'            => 'publish',
+                        'posts_per_page'         => $batch_limit,
+                        'orderby'                => 'modified',
+                        'order'                  => 'DESC',
+                        'no_found_rows'          => true,
+                        'update_post_term_cache' => false,
+                        'update_post_meta_cache' => false,
+                    ) );
+                    if ( ! is_wp_error( $product_query ) && ! empty( $product_query->posts ) ) {
+                        foreach ( $product_query->posts as $product_post ) {
+                            $assets_scanned['product']++;
+                            $candidate_pool = array_merge(
+                                $candidate_pool,
+                                lee_dev_extract_candidate_phrases_from_text_7506( $product_post->post_title, $blacklist ),
+                                lee_dev_extract_candidate_phrases_from_text_7506( $product_post->post_content, $blacklist ),
+                                lee_dev_extract_candidate_phrases_from_text_7506( $product_post->post_excerpt, $blacklist )
+                            );
+                            if ( function_exists( 'wc_get_product' ) ) {
+                                $wc_product = wc_get_product( $product_post->ID );
+                                if ( $wc_product ) {
+                                    $candidate_pool = array_merge(
+                                        $candidate_pool,
+                                        lee_dev_extract_candidate_phrases_from_text_7506( $wc_product->get_short_description(), $blacklist )
+                                    );
                                 }
                             }
-                        }
-                    }
-                }
-
-                $target_taxonomies = array( 'category' );
-                if ( class_exists( 'WooCommerce' ) ) {
-                    $target_taxonomies[] = 'product_cat';
-                }
-                $terms = get_terms(['taxonomy' => $target_taxonomies, 'hide_empty' => false]);
-                
-                if ( ! is_wp_error($terms) && ! empty($terms) ) {
-                    foreach ( $master_groups as $cat_slug => $cat_label ) {
-                        $scanned_items[$cat_slug][] = $cat_slug;
-                        $scanned_items[$cat_slug][] = str_replace( array( '-', '_' ), ' ', $cat_slug );
-
-                        foreach ( $terms as $term ) {
-                            $term_slug = is_object($term) && isset($term->slug) ? strtolower($term->slug) : strtolower($term['slug']);
-                            $clean_slug_phrase = trim(str_replace(['_', '-'], ' ', $term_slug));
-                            if ( strlen($clean_slug_phrase) < 3 || in_array($term_slug, $blacklist, true) || in_array($clean_slug_phrase, $blacklist, true) ) continue;
-
-                            if ( strpos($term_slug, $cat_slug) !== false || strpos($cat_slug, $term_slug) !== false ) {
-                                $scanned_items[$cat_slug][] = $clean_slug_phrase;
+                            $taxonomy_phrases = lee_dev_collect_asset_taxonomy_phrases_5912( $product_post->ID, 'product' );
+                            foreach ( $taxonomy_phrases as $tax_phrase ) {
+                                $candidate_pool = array_merge(
+                                    $candidate_pool,
+                                    lee_dev_extract_candidate_phrases_from_text_7506( $tax_phrase, $blacklist )
+                                );
                             }
                         }
+                        wp_reset_postdata();
                     }
                 }
 
-                $clean_rebuilt_dict = [];
+                /**
+                 * Prong 2 — Posts: title + assigned taxonomy terms only (no body).
+                 */
+                $post_query = new WP_Query( array(
+                    'post_type'              => 'post',
+                    'post_status'            => 'publish',
+                    'posts_per_page'         => $batch_limit,
+                    'orderby'                => 'modified',
+                    'order'                  => 'DESC',
+                    'no_found_rows'          => true,
+                    'update_post_term_cache' => false,
+                    'update_post_meta_cache' => false,
+                ) );
+                if ( ! is_wp_error( $post_query ) && ! empty( $post_query->posts ) ) {
+                    foreach ( $post_query->posts as $blog_post ) {
+                        $assets_scanned['post']++;
+                        $candidate_pool = array_merge(
+                            $candidate_pool,
+                            lee_dev_extract_candidate_phrases_from_text_7506( $blog_post->post_title, $blacklist )
+                        );
+                        $taxonomy_phrases = lee_dev_collect_asset_taxonomy_phrases_5912( $blog_post->ID, 'post' );
+                        foreach ( $taxonomy_phrases as $tax_phrase ) {
+                            $candidate_pool = array_merge(
+                                $candidate_pool,
+                                lee_dev_extract_candidate_phrases_from_text_7506( $tax_phrase, $blacklist )
+                            );
+                        }
+                    }
+                    wp_reset_postdata();
+                }
+
+                /**
+                 * Prong 3 — Pages: title + content + public meta (incl. ACF fields).
+                 */
+                $page_query = new WP_Query( array(
+                    'post_type'              => 'page',
+                    'post_status'            => 'publish',
+                    'posts_per_page'         => $batch_limit,
+                    'orderby'                => 'modified',
+                    'order'                  => 'DESC',
+                    'no_found_rows'          => true,
+                    'update_post_term_cache' => false,
+                    'update_post_meta_cache' => false,
+                ) );
+                if ( ! is_wp_error( $page_query ) && ! empty( $page_query->posts ) ) {
+                    foreach ( $page_query->posts as $page_post ) {
+                        $assets_scanned['page']++;
+                        $candidate_pool = array_merge(
+                            $candidate_pool,
+                            lee_dev_extract_candidate_phrases_from_text_7506( $page_post->post_title, $blacklist ),
+                            lee_dev_extract_candidate_phrases_from_text_7506( $page_post->post_content, $blacklist )
+                        );
+                        $meta_phrases = lee_dev_collect_asset_public_meta_phrases_8137( $page_post->ID );
+                        foreach ( $meta_phrases as $meta_phrase ) {
+                            $candidate_pool = array_merge(
+                                $candidate_pool,
+                                lee_dev_extract_candidate_phrases_from_text_7506( $meta_phrase, $blacklist )
+                            );
+                        }
+                    }
+                    wp_reset_postdata();
+                }
+
+                $candidate_pool = array_values( array_unique( array_filter( $candidate_pool ) ) );
+                $clean_rebuilt_dict = lee_dev_bucket_candidates_into_intents_6024( $candidate_pool );
+
+                update_option('itp_dynamic_keyword_dictionary', $clean_rebuilt_dict);
+
+                $bucket_summary = array();
+                foreach ( $master_groups as $intent_slug => $intent_label ) {
+                    $bucket_summary[] = sprintf( '%s: %d', $intent_label, isset( $clean_rebuilt_dict[$intent_slug] ) ? count( $clean_rebuilt_dict[$intent_slug] ) : 0 );
+                }
+
+                printf(
+                    '<div class="notice notice-success is-dismissible"><p><strong>Three-pronged intent scan complete.</strong> Products: %d, Posts: %d, Pages: %d. Phrases distributed — %s.</p></div>',
+                    (int) $assets_scanned['product'],
+                    (int) $assets_scanned['post'],
+                    (int) $assets_scanned['page'],
+                    esc_html( implode( ' • ', $bucket_summary ) )
+                );
+            
+            } elseif ( isset($_POST['itp_save_dictionary']) ) {
+                check_admin_referer('itp_scanner_action', 'itp_scanner_nonce');
+
+                $raw_inputs = isset($_POST['itp_dict']) ? (array) $_POST['itp_dict'] : array();
+                $cap = function_exists( 'lee_dev_get_intent_dictionary_capacity_5083' )
+                    ? lee_dev_get_intent_dictionary_capacity_5083()
+                    : 50;
+                $new_dict = array();
+
                 foreach ( $master_groups as $key => $label ) {
-                    $dynamic_found = isset($scanned_items[$key]) ? $scanned_items[$key] : [];
-                    $raw_unique = array_values(array_unique(array_filter($dynamic_found)));
-                    
-                    $filtered_phrases = [];
+                    $raw_value = isset( $raw_inputs[$key] ) ? wp_unslash( $raw_inputs[$key] ) : '';
+                    if ( ! is_string( $raw_value ) || $raw_value === '' ) {
+                        $new_dict[$key] = array();
+                        continue;
+                    }
+
+                    $phrases = explode( ',', $raw_value );
+                    $clean_phrases = array_map( function( $p ) {
+                        return strtolower( trim( wp_strip_all_tags( (string) $p ) ) );
+                    }, $phrases );
+                    $raw_unique = array_values( array_unique( array_filter( $clean_phrases ) ) );
+
+                    $filtered_phrases = array();
                     foreach ( $raw_unique as $phrase ) {
                         $is_duplicate_word = false;
-                        if ( strpos($phrase, ' ') === false ) {
+                        if ( strpos( $phrase, ' ' ) === false ) {
                             foreach ( $raw_unique as $comparison_phrase ) {
-                                if ( $phrase !== $comparison_phrase && strpos($comparison_phrase, $phrase) !== false ) {
+                                if ( $phrase !== $comparison_phrase && strpos( $comparison_phrase, $phrase ) !== false ) {
                                     $is_duplicate_word = true;
                                     break;
                                 }
@@ -457,49 +480,19 @@ $active_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'dashboa
                             $filtered_phrases[] = $phrase;
                         }
                     }
-                    $clean_rebuilt_dict[$key] = $filtered_phrases;
+
+                    $new_dict[$key] = array_values( array_slice( $filtered_phrases, 0, $cap ) );
                 }
 
-                update_option('itp_dynamic_keyword_dictionary', $clean_rebuilt_dict);
-                echo '<div class="notice notice-success is-dismissible"><p><strong>Website scan complete!</strong> Post processing successfully constrained to taxonomy layers with duplicate exclusions.</p></div>';
-            
-            } elseif ( isset($_POST['itp_save_dictionary']) ) {
-                check_admin_referer('itp_scanner_action', 'itp_scanner_nonce');
-                
-                $raw_inputs = isset($_POST['itp_dict']) ? $_POST['itp_dict'] : [];
-                $new_dict = [];
-                
-                foreach ( $master_groups as $key => $label ) {
-                    if ( ! empty($raw_inputs[$key]) ) {
-                        $phrases = explode(',', $raw_inputs[$key]);
-                        $clean_phrases = array_map(function($p) {
-                            return trim(strtolower($p)); 
-                        }, $phrases);
-                        $raw_unique = array_unique(array_filter($clean_phrases));
-                        
-                        $filtered_phrases = [];
-                        foreach ( $raw_unique as $phrase ) {
-                            $is_duplicate_word = false;
-                            if ( strpos($phrase, ' ') === false ) {
-                                foreach ( $raw_unique as $comparison_phrase ) {
-                                    if ( $phrase !== $comparison_phrase && strpos($comparison_phrase, $phrase) !== false ) {
-                                        $is_duplicate_word = true;
-                                        break;
-                                    }
-                                }
-                            }
-                            if ( ! $is_duplicate_word ) {
-                                    $filtered_phrases[] = $phrase;
-                            }
-                        }
-                        $new_dict[$key] = $filtered_phrases;
-                    } else {
-                        $new_dict[$key] = [];
+                // Guarantee every hardcoded intent key exists even if user blanked a textarea.
+                foreach ( array_keys( $master_groups ) as $intent_slug ) {
+                    if ( ! isset( $new_dict[$intent_slug] ) ) {
+                        $new_dict[$intent_slug] = array();
                     }
                 }
 
-                update_option('itp_dynamic_keyword_dictionary', $new_dict);
-                echo '<div class="notice notice-success is-dismissible"><p>Custom keyphrase dictionaries updated successfully.</p></div>';
+                update_option( 'itp_dynamic_keyword_dictionary', $new_dict );
+                echo '<div class="notice notice-success is-dismissible"><p>Intent keyphrase dictionaries updated. Each bucket capped at ' . (int) $cap . ' phrases.</p></div>';
             }
         }
 
@@ -512,9 +505,18 @@ $active_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'dashboa
             $content_scan_status = array();
         }
         ?>
+        <?php
+        $intent_descriptions = array(
+            'transactional-intent' => 'Buyer signals — buy, order, price, quote, checkout, deal, discount, hire, book, subscribe.',
+            'informational-intent' => 'Researcher signals — how, what, why, guide, tutorial, learn, tips, definition, examples.',
+            'engagement-intent'    => 'Community signals — contact, support, follow, share, join, members, events, webinars.',
+            'commercial-intent'    => 'Evaluation signals — best, top, vs, review, compare, alternatives, recommended, ranked.',
+            'specialist-intent'    => 'Niche / business-specific catch-all for terms that do not match the upstream lexicons.',
+        );
+        ?>
         <div style="background:#fff; padding:25px; border:1px solid #ccd0d4; border-radius:4px; margin-top:15px;">
-            <h3>🤖 Dynamic Keyphrase Dictionary & Taxonomy Mapping</h3>
-            <p class="description">This panel governs the exact tracking keywords and multi-word phrases mapped to each propensity score evaluation profile.</p>
+            <h3>🤖 Hardcoded Intent Dictionary Matrix</h3>
+            <p class="description">This panel governs the exact tracking keyphrases mapped to the five hardcoded intent buckets. Each bucket holds up to <?php echo (int) ( function_exists( 'lee_dev_get_intent_dictionary_capacity_5083' ) ? lee_dev_get_intent_dictionary_capacity_5083() : 50 ); ?> phrases.</p>
             <div style="background:#f6f7f7; padding:15px; border-left:4px solid #46b450; border-radius:3px; margin-top:15px;">
                 <strong>Hourly Content Tracking Status</strong><br/>
                 <span class="description">
@@ -533,8 +535,8 @@ $active_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'dashboa
                 <?php wp_nonce_field('itp_scanner_action', 'itp_scanner_nonce'); ?>
                 <div style="background:#f0f6fa; padding:15px; border-left:4px solid #2271b1; border-radius:3px; display:flex; align-items:center; justify-content:space-between;">
                     <div style="max-width:70%;">
-                        <strong>Run Automated Website Phrase Scan</strong><br/>
-                        <span class="description">Scans commercial product and event titles dynamically, while routing blog posts securely via custom taxonomies to prevent keyword noise.</span>
+                        <strong>Run Three-Pronged Intent Phrase Scan</strong><br/>
+                        <span class="description">Products are scanned across title, taxonomies and content. Posts are scanned across title and taxonomies. Pages are scanned across title, content and public meta (including ACF fields). Phrases are then classified into the five hardcoded intent buckets.</span>
                     </div>
                     <input type="submit" name="itp_trigger_scan" class="button button-secondary" value="Scan Website Structure Now" />
                 </div>
@@ -543,17 +545,21 @@ $active_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'dashboa
             <form method="post" action="">
                 <?php wp_nonce_field('itp_scanner_action', 'itp_scanner_nonce'); ?>
                 <table class="form-table" style="margin-top:20px;">
-                    <?php foreach ( $master_groups as $key => $label ) : 
-                        $current_phrases = isset($dictionary[$key]) ? implode(', ', $dictionary[$key]) : '';
+                    <?php foreach ( $master_groups as $key => $label ) :
+                        $current_phrases = isset($dictionary[$key]) && is_array( $dictionary[$key] ) ? implode(', ', $dictionary[$key]) : '';
+                        $current_count   = isset($dictionary[$key]) && is_array( $dictionary[$key] ) ? count( $dictionary[$key] ) : 0;
+                        $cap_value       = (int) ( function_exists( 'lee_dev_get_intent_dictionary_capacity_5083' ) ? lee_dev_get_intent_dictionary_capacity_5083() : 50 );
+                        $intent_blurb    = isset( $intent_descriptions[$key] ) ? $intent_descriptions[$key] : '';
                     ?>
                         <tr style="border-top:1px solid #eee;">
-                            <th style="width:220px; padding:20px 0; vertical-align:top;">
+                            <th style="width:240px; padding:20px 0; vertical-align:top;">
                                 <strong><?php echo esc_html($label); ?></strong><br/>
-                                <span class="description">Group Key: <code><?php echo esc_html($key); ?></code></span>
+                                <span class="description">Intent Key: <code><?php echo esc_html($key); ?></code></span><br/>
+                                <span class="description" style="font-size:11px; color:#646970;"><?php echo esc_html( $current_count ); ?> / <?php echo esc_html( $cap_value ); ?> phrases stored.</span>
                             </th>
                             <td style="padding:15px 0;">
-                                <textarea name="itp_dict[<?php echo esc_attr($key); ?>]" rows="3" class="large-text" style="font-family:monospace; font-size:13px;" placeholder="e.g. farm management pocketbook, nix, sfi schemes"><?php echo esc_textarea($current_phrases); ?></textarea>
-                                <p class="description" style="margin-top:5px;">Separate evaluation target keyphrases with commas.</p>
+                                <textarea name="itp_dict[<?php echo esc_attr($key); ?>]" rows="3" class="large-text" style="font-family:monospace; font-size:13px;" placeholder="comma separated intent keyphrases"><?php echo esc_textarea($current_phrases); ?></textarea>
+                                <p class="description" style="margin-top:5px;"><?php echo esc_html( $intent_blurb ); ?> Separate keyphrases with commas. Cap of <?php echo (int) $cap_value; ?> per bucket is enforced on save.</p>
                             </td>
                         </tr>
                     <?php endforeach; ?>

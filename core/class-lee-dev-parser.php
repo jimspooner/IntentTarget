@@ -2,165 +2,129 @@
 if ( ! defined( 'ABSPATH' ) ) exit;
 
 /**
- * Extract active categories and product categories dynamically
+ * Return the active intent categories used by the propensity engine.
+ *
+ * Historically this returned dynamic WP/WooCommerce taxonomy terms. The plugin
+ * now operates on the five hardcoded intent buckets defined in
+ * lee_dev_get_intent_categories_3812(); this wrapper is preserved so that
+ * existing callers in admin and telemetry layers continue to function without
+ * modification.
  */
 function lee_dev_get_active_categories_5921() {
-    $categories = array();
-
-    // Fetch active WordPress categories
-    $wp_terms = get_terms( array(
-        'taxonomy'   => 'category',
-        'hide_empty' => false,
-    ) );
-    if ( ! is_wp_error( $wp_terms ) && ! empty( $wp_terms ) ) {
-        foreach ( $wp_terms as $term ) {
-            $categories[$term->slug] = $term->name . ' (Category)';
-        }
-    }
-
-    // Fetch active WooCommerce product categories
-    if ( class_exists( 'WooCommerce' ) && taxonomy_exists( 'product_cat' ) ) {
-        $wc_terms = get_terms( array(
-            'taxonomy'   => 'product_cat',
-            'hide_empty' => false,
-        ) );
-        if ( ! is_wp_error( $wc_terms ) && ! empty( $wc_terms ) ) {
-            foreach ( $wc_terms as $term ) {
-                $categories[$term->slug] = $term->name . ' (Product Category)';
-            }
-        }
+    if ( function_exists( 'lee_dev_get_intent_categories_3812' ) ) {
+        $categories = lee_dev_get_intent_categories_3812();
+    } else {
+        $categories = array();
     }
 
     return apply_filters( 'lee_dev_active_categories_5921', $categories );
 }
 
 /**
- * Master Text Sweeper Engine (Smart Hierarchical Substring Pass)
+ * Master Text Sweeper Engine (3-Pronged Intent Corpus)
+ *
+ * The corpus is built per post type:
+ *   - product : title + Woo taxonomies + content + excerpt + short description
+ *   - post    : title + categories + tags
+ *   - page    : title + content + public meta (incl. ACF fields)
+ *
+ * Discovered phrases that already exist in the dictionary are written to
+ * _itp_tracking_labels for the propensity engine.
  */
-function lee_dev_execute_combined_content_scan_1289($post_id, $post) {
+function lee_dev_execute_combined_content_scan_1289( $post_id, $post ) {
     if ( ! $post ) return;
-    
+
     do_action( 'lee_dev_before_post_scan_1289', $post_id, $post );
 
-    $current_type = ! empty($post->post_type) ? $post->post_type : 'post';
-    $dictionary = get_option('itp_dynamic_keyword_dictionary', []);
-    if ( empty($dictionary) ) return;
+    $current_type = ! empty( $post->post_type ) ? (string) $post->post_type : 'post';
+    $apply_overrides = function( $matches ) use ( $post_id ) {
+        return function_exists( 'lee_dev_apply_manual_label_overrides_2937' )
+            ? lee_dev_apply_manual_label_overrides_2937( $matches, $post_id )
+            : (array) $matches;
+    };
 
-    $target_phrases = [];
-    foreach ($dictionary as $slugs_array) {
-        if ( is_array($slugs_array) ) {
-            foreach ( $slugs_array as $slug ) {
-                $clean_slug = strtolower(trim($slug));
-                if ( ! empty($clean_slug) ) {
-                    $target_phrases[] = $clean_slug;
-                }
-            }
+    $dictionary = get_option( 'itp_dynamic_keyword_dictionary', array() );
+    if ( empty( $dictionary ) || ! is_array( $dictionary ) ) {
+        $override_only = $apply_overrides( array() );
+        if ( ! empty( $override_only ) ) {
+            update_post_meta( $post_id, '_itp_tracking_labels', array_values( $override_only ) );
+        } else {
+            delete_post_meta( $post_id, '_itp_tracking_labels' );
         }
+        do_action( 'lee_dev_after_post_scan_1289', $post_id, $override_only );
+        return;
     }
-    
-    usort($target_phrases, function($a, $b) {
-        return strlen($b) - strlen($a);
-    });
 
-    $master_string = '';
-
-    // CRITICAL LOW-MEMORY SAFETY GUARD: Standard blog posts & pages NEVER scan title, content, or full body copy.
-    // They are evaluated strictly via active public Taxonomy terms.
     $default_scannable_post_types = array( 'post', 'page' );
     if ( class_exists( 'WooCommerce' ) ) {
         $default_scannable_post_types[] = 'product';
     }
     $scannable_post_types = apply_filters( 'lee_dev_scannable_post_types_1289', $default_scannable_post_types );
-    
-    if ( in_array( $current_type, $scannable_post_types, true ) ) {
-        if ( $current_type === 'post' || $current_type === 'page' ) {
-            $taxonomy_words = [];
-            $taxonomies = get_object_taxonomies( $post );
-            if ( ! empty( $taxonomies ) ) {
-                foreach ( $taxonomies as $taxonomy ) {
-                    $terms = wp_get_object_terms( $post_id, $taxonomy );
-                    if ( ! is_wp_error( $terms ) && ! empty( $terms ) ) {
-                        foreach ( $terms as $term ) {
-                            $taxonomy_words[] = strtolower( $term->name );
-                            $taxonomy_words[] = strtolower( $term->slug );
-                            $taxonomy_words[] = str_replace( array( '-', '_' ), ' ', strtolower( $term->slug ) );
-                        }
-                    }
-                }
-            }
-            $master_string = implode(' ', $taxonomy_words);
+    if ( ! in_array( $current_type, $scannable_post_types, true ) ) {
+        $override_only = $apply_overrides( array() );
+        if ( ! empty( $override_only ) ) {
+            update_post_meta( $post_id, '_itp_tracking_labels', array_values( $override_only ) );
         } else {
-            // Other post types (e.g. product) are allowed to scan full body fields
-            $raw_text_pool = [];
-            $raw_text_pool[] = $post->post_title;
-            $raw_text_pool[] = $post->post_content;
-            $raw_text_pool[] = $post->post_excerpt;
-
-            if ( class_exists( 'WooCommerce' ) && $current_type === 'product' ) {
-                if ( function_exists('wc_get_product') ) {
-                    $product = wc_get_product($post_id);
-                    if ( $product ) {
-                        $raw_text_pool[] = $product->get_short_description();
-                    }
-                }
-            }
-
-            $all_meta_fields = get_post_meta($post_id);
-            if ( ! empty($all_meta_fields) && is_array($all_meta_fields) ) {
-                foreach ( $all_meta_fields as $meta_key => $meta_values ) {
-                    if ( strpos($meta_key, '_') === 0 ) continue; 
-                    if ( is_array($meta_values) ) {
-                        foreach ( $meta_values as $value ) {
-                            if ( is_object($value) ) continue;
-                            if ( is_array($value) ) {
-                                $raw_text_pool[] = implode(' ', array_filter(array_map('strval', $value)));
-                            } elseif ( is_string($value) || is_numeric($value) ) {
-                                $raw_text_pool[] = (string) $value;
-                            }
-                        }
-                    }
-                }
-            }
-
-            $master_string = implode(' ', $raw_text_pool);
+            delete_post_meta( $post_id, '_itp_tracking_labels' );
         }
+        do_action( 'lee_dev_after_post_scan_1289', $post_id, $override_only );
+        return;
     }
 
-    $master_string = strip_tags(strip_shortcodes($master_string));
-    $master_string = strtolower($master_string);
-    $master_string = str_replace(['&nbsp;', "\xc2\xa0", '-', '_'], ' ', $master_string);
-    $master_string = preg_replace('/[.,\/#!$%\^&\*;:{}=`~()?"’‘“”\n\r]/', ' ', $master_string);
-    $master_string = preg_replace('/\s+/', ' ', $master_string);
+    $target_phrases = array();
+    foreach ( $dictionary as $phrases_array ) {
+        if ( ! is_array( $phrases_array ) ) {
+            continue;
+        }
+        foreach ( $phrases_array as $phrase ) {
+            $clean_phrase = strtolower( trim( (string) $phrase ) );
+            if ( $clean_phrase !== '' ) {
+                $target_phrases[] = $clean_phrase;
+            }
+        }
+    }
+    $target_phrases = array_values( array_unique( $target_phrases ) );
+    usort( $target_phrases, function( $a, $b ) {
+        return strlen( $b ) - strlen( $a );
+    } );
 
-    $matched_labels = [];
+    $master_string = function_exists( 'lee_dev_build_asset_search_corpus_4216' )
+        ? lee_dev_build_asset_search_corpus_4216( $post )
+        : '';
 
-    foreach ( $target_phrases as $phrase ) {
-        if ( empty($phrase) ) continue;
-
-        if ( strpos($master_string, $phrase) !== false ) {
+    $matched_labels = array();
+    if ( $master_string !== '' ) {
+        foreach ( $target_phrases as $phrase ) {
+            if ( $phrase === '' ) {
+                continue;
+            }
+            if ( strpos( $master_string, $phrase ) === false ) {
+                continue;
+            }
             $already_covered = false;
-            if ( strpos($phrase, ' ') === false ) { 
+            if ( strpos( $phrase, ' ' ) === false ) {
                 foreach ( $matched_labels as $matched_phrase ) {
-                    if ( strpos($matched_phrase, $phrase) !== false ) {
+                    if ( strpos( $matched_phrase, $phrase ) !== false ) {
                         $already_covered = true;
                         break;
                     }
                 }
             }
-
             if ( ! $already_covered ) {
                 $matched_labels[] = $phrase;
             }
         }
     }
 
-    $matched_labels = array_unique(array_filter($matched_labels));
+    $matched_labels = array_values( array_unique( array_filter( $matched_labels ) ) );
     $matched_labels = apply_filters( 'lee_dev_matched_labels_1289', $matched_labels, $post_id, $post );
 
-    if ( ! empty($matched_labels) ) {
-        update_post_meta($post_id, '_itp_tracking_labels', array_values($matched_labels));
+    $matched_labels = $apply_overrides( $matched_labels );
+
+    if ( ! empty( $matched_labels ) ) {
+        update_post_meta( $post_id, '_itp_tracking_labels', array_values( $matched_labels ) );
     } else {
-        delete_post_meta($post_id, '_itp_tracking_labels');
+        delete_post_meta( $post_id, '_itp_tracking_labels' );
     }
 
     do_action( 'lee_dev_after_post_scan_1289', $post_id, $matched_labels );

@@ -37,7 +37,7 @@ function lee_dev_maybe_send_telemetry_ping_3821() {
         'timestamp'      => time()
     );
 
-    $endpoint = apply_filters( 'lee_dev_telemetry_endpoint_3821', 'https://telemetry.intenttargetpro.co.uk/ping' );
+    $endpoint = apply_filters( 'lee_dev_telemetry_endpoint_3821', 'https://telemetry.intenttargetpro.com/ping' );
 
     // Send payload safely in the background
     $response = wp_safe_remote_post( $endpoint, array(
@@ -46,7 +46,10 @@ function lee_dev_maybe_send_telemetry_ping_3821() {
         'redirection' => 5,
         'httpversion' => '1.0',
         'blocking'    => true,
-        'headers'     => array( 'Content-Type' => 'application/json' ),
+        'headers'     => array( 
+            'Content-Type'          => 'application/json',
+            'X-ITP-Telemetry-Token' => 'b8f4c2e9d1a3756b90f8d1e4a3b2c7f6e5d8a9b0c1d2e3f4a5b6c7d8e9f0a1b2' // Add this line
+        ),
         'body'        => json_encode( $payload ),
         'cookies'     => array()
     ) );
@@ -146,5 +149,74 @@ function lee_dev_process_licence_activation_4812() {
         lee_dev_debug_log_event_6158( 'licence.deactivated' );
         wp_safe_redirect( add_query_arg( array( 'page' => 'itp-search-dashboard', 'licence-updated' => 'deactivated' ), admin_url( 'admin.php' ) ) );
         exit;
+    }
+}
+// =========================================================================
+// 4. DAILY BACKGROUND LICENCE VERIFICATION
+// =========================================================================
+
+// Schedule the daily cron job if it isn't already set
+add_action( 'init', 'lee_dev_schedule_daily_licence_check_1102' );
+function lee_dev_schedule_daily_licence_check_1102() {
+    if ( ! wp_next_scheduled( 'itp_daily_licence_verification_event' ) ) {
+        wp_schedule_event( time(), 'daily', 'itp_daily_licence_verification_event' );
+    }
+}
+
+// Hook the verification function to the scheduled event
+add_action( 'itp_daily_licence_verification_event', 'lee_dev_verify_licence_remotely_5592' );
+function lee_dev_verify_licence_remotely_5592() {
+    $current_key    = get_option( 'lee_dev_licence_key', '' );
+    $current_status = get_option( 'lee_dev_licence_status', 'unauthorised' );
+
+    // If there is no key or it's already unauthorised locally, skip the remote check
+    if ( empty( $current_key ) || $current_status !== 'authorised' ) {
+        return;
+    }
+
+    $endpoint = apply_filters( 'lee_dev_licence_verification_endpoint_1102', 'https://intenttargetpro.com/wp-json/intenttarget/v1/verify' );
+    
+    // Send the verification payload
+    $response = wp_safe_remote_post( $endpoint, array(
+        'timeout'     => 15,
+        'redirection' => 5,
+        'blocking'    => true,
+        'body'        => array(
+            'licence_code'     => sanitize_text_field( $current_key ),
+            'activation_email' => get_option( 'admin_email' ),
+            'domain'           => wp_parse_url( home_url(), PHP_URL_HOST ),
+            'client_url'       => home_url(),
+        ),
+    ) );
+
+    // If the request fails due to a network error, do not deactivate. 
+    // We only deactivate on a confirmed rejection from the Master Hub.
+    if ( is_wp_error( $response ) ) {
+        return; 
+    }
+
+    $response_code = (int) wp_remote_retrieve_response_code( $response );
+    $body          = json_decode( wp_remote_retrieve_body( $response ), true );
+    $remote_status = is_array( $body ) && isset( $body['status'] ) ? sanitize_text_field( $body['status'] ) : '';
+
+    // If the Master Hub explicitly returns a 403 or states the licence is deactivated/unauthorised
+    if ( $response_code === 403 || in_array( $remote_status, array( 'deactivated', 'unauthorised' ), true ) ) {
+        update_option( 'lee_dev_licence_status', 'unauthorised' );
+        
+        // Optional: Log the event if your debugging function exists
+        if ( function_exists( 'lee_dev_debug_log_event_6158' ) ) {
+            lee_dev_debug_log_event_6158( 'licence.remote_deactivation', array(
+                'reason' => isset( $body['message'] ) ? sanitize_text_field( $body['message'] ) : 'Revoked by Master Hub'
+            ) );
+        }
+    }
+}
+
+// Clear the scheduled cron job when the plugin is deactivated locally
+register_deactivation_hook( __FILE__, 'lee_dev_clear_licence_cron_on_deactivation_9921' );
+function lee_dev_clear_licence_cron_on_deactivation_9921() {
+    $timestamp = wp_next_scheduled( 'itp_daily_licence_verification_event' );
+    if ( $timestamp ) {
+        wp_unschedule_event( $timestamp, 'itp_daily_licence_verification_event' );
     }
 }
