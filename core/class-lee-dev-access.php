@@ -33,6 +33,42 @@ function lee_dev_has_authorised_licence_7365() {
     return ( get_option( 'lee_dev_licence_status', 'unauthorised' ) === 'authorised' );
 }
 
+/**
+ * Centralised add-on activation gate used by every IntentTarget add-on (Pro, Webhooks, Quizzes, AI...).
+ *
+ * The function returns true ONLY when the Master Hub has confirmed a paid licence for the requested
+ * add-on slug, with the verified status saved into wp_options. Add-ons must wrap all functional code
+ * in this gate so unauthorised installs remain dormant whilst the admin UI stays visible per the
+ * documented up-sell behaviour.
+ *
+ * Supported slugs:
+ *  - 'core' : the base IntentTarget plugin (option 'lee_dev_licence_status')
+ *  - 'pro'  : the IntentTarget Pro add-on    (option 'lee_dev_pro_licence_status')
+ *
+ * Additional add-ons can be registered via the `lee_dev_addon_status_option_map_3812` filter, which
+ * receives the slug => option-name map.
+ *
+ * @param string $addon_slug Add-on identifier, e.g. 'pro'.
+ * @return bool True when the add-on holds an authorised licence locally.
+ */
+function lee_dev_is_addon_active_3812( $addon_slug ) {
+    $slug = sanitize_key( (string) $addon_slug );
+    if ( $slug === '' ) {
+        return false;
+    }
+
+    $option_map = apply_filters( 'lee_dev_addon_status_option_map_3812', array(
+        'core' => 'lee_dev_licence_status',
+        'pro'  => 'lee_dev_pro_licence_status',
+    ) );
+
+    if ( ! isset( $option_map[ $slug ] ) ) {
+        return false;
+    }
+
+    return ( get_option( $option_map[ $slug ], 'unauthorised' ) === 'authorised' );
+}
+
 function lee_dev_debug_logging_is_enabled_2846() {
     return ( get_option( 'itp_debug_logging_enabled_2846', 'no' ) === 'yes' );
 }

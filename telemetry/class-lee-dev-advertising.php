@@ -406,9 +406,10 @@ function lee_dev_render_intent_popup_2841() {
             <?php $cu = wp_get_current_user(); if ( 0 !== $cu->ID ) : ?>
                 <p class="itp-popup-greet">Hi, <?php echo esc_html($cu->display_name); ?></p>
             <?php endif; ?>
-            <a href="<?php echo esc_url($featured['url']); ?>" class="itp-popup-title"><?php echo esc_html($featured['title']); ?></a>
+            <?php $itp_featured_intent = isset( $featured['intent'] ) ? sanitize_key( $featured['intent'] ) : ''; ?>
+            <a href="<?php echo esc_url($featured['url']); ?>" class="itp-popup-title" data-itp-track="1" data-itp-intent="<?php echo esc_attr( $itp_featured_intent ); ?>" data-itp-source="slidein"><?php echo esc_html($featured['title']); ?></a>
             <p class="itp-popup-desc"><?php echo esc_html($featured['desc']); ?></p>
-            <a href="<?php echo esc_url($featured['url']); ?>" class="itp-popup-btn itp-button"><?php echo esc_html($featured['btn']); ?></a>
+            <a href="<?php echo esc_url($featured['url']); ?>" class="itp-popup-btn itp-button" data-itp-track="1" data-itp-intent="<?php echo esc_attr( $itp_featured_intent ); ?>" data-itp-source="slidein"><?php echo esc_html($featured['btn']); ?></a>
         <?php endif; ?>
         <?php if ( apply_filters( 'itp_show_popup_branding', true ) ) : ?>
             <div class="itp-branding-link">
@@ -581,20 +582,40 @@ function lee_dev_add_dashboard_recommendation_5824() {
             border-top: 1px solid #e5e5e5;
             margin: 28px 0;
         }
+         .itp-branding-link {
+            font-size:11px;
+            text-align:left;
+            padding:3px;
+            margin-top:5px;
+        }
     </style>
+    <?php
+    $primary_intent   = isset( $adverts['primary']['intent'] ) ? sanitize_key( $adverts['primary']['intent'] ) : '';
+    $secondary_intent = isset( $adverts['secondary']['intent'] ) ? sanitize_key( $adverts['secondary']['intent'] ) : '';
+    ?>
     <div class="itp-dashboard-grid">
         <div class="itp-dashboard-offer">
             <span class="itp-dashboard-label">Recommended</span>
             <h3 class="itp-dashboard-title"><?php echo $seasonal_badge; ?><?php echo esc_html( $adverts['primary']['title'] ); ?></h3>
             <p class="itp-dashboard-desc"><?php echo esc_html( $adverts['primary']['desc'] ); ?></p>
-            <a href="<?php echo esc_url( $adverts['primary']['url'] ); ?>" class="itp-dashboard-cta"><?php echo esc_html( $adverts['primary']['btn'] ); ?></a>
+            <a href="<?php echo esc_url( $adverts['primary']['url'] ); ?>" class="itp-dashboard-cta" data-itp-track="1" data-itp-intent="<?php echo esc_attr( $primary_intent ); ?>" data-itp-source="account_dashboard"><?php echo esc_html( $adverts['primary']['btn'] ); ?></a>
+             <?php if ( apply_filters( 'itp_show_popup_branding', true ) ) : ?>
+            <div class="itp-branding-link">
+                <a href="https://intenttargetpro.com" target="_blank" rel="noopener noreferrer">Powered by IntentTargetPro</a>
+            </div>
+        <?php endif; ?>
         </div>
         <?php if ( isset( $adverts['secondary'] ) ) : ?>
             <div class="itp-dashboard-offer">
                 <span class="itp-dashboard-label">Recommended</span>
                 <h3 class="itp-dashboard-title"><?php echo esc_html( $adverts['secondary']['title'] ); ?></h3>
                 <p class="itp-dashboard-desc"><?php echo esc_html( $adverts['secondary']['desc'] ); ?></p>
-                <a href="<?php echo esc_url( $adverts['secondary']['url'] ); ?>" class="itp-dashboard-cta"><?php echo esc_html( $adverts['secondary']['btn'] ); ?></a>
+                <a href="<?php echo esc_url( $adverts['secondary']['url'] ); ?>" class="itp-dashboard-cta" data-itp-track="1" data-itp-intent="<?php echo esc_attr( $secondary_intent ); ?>" data-itp-source="account_dashboard"><?php echo esc_html( $adverts['secondary']['btn'] ); ?></a>
+                 <?php if ( apply_filters( 'itp_show_popup_branding', true ) ) : ?>
+            <div class="itp-branding-link">
+                <a href="https://intenttargetpro.com" target="_blank" rel="noopener noreferrer">Powered by IntentTargetPro</a>
+            </div>
+        <?php endif; ?>
             </div>
         <?php endif; ?>
     </div>

@@ -27,6 +27,49 @@ function lee_dev_get_master_hub_table_name_4826() {
     return $wpdb->prefix . 'intenttarget_licenses';
 }
 
+/**
+ * Central registry of the IntentTarget products the Master Hub is authorised to issue licences for.
+ *
+ * Each entry defines the persisted plugin slug, the customer-facing label, and the licence code
+ * prefix used during code generation and inbound validation. Adding a new product here is the
+ * single source of truth that propagates to the dashboard selector, code generator, and the
+ * REST activation/verification handlers.
+ *
+ * @return array
+ */
+function lee_dev_get_master_hub_supported_plugins_8521() {
+    $supported = array(
+        'core' => array(
+            'label'  => __( 'IntentTarget Core', 'intenttarget-pro' ),
+            'prefix' => 'ITP-',
+        ),
+        'pro'  => array(
+            'label'  => __( 'IntentTarget Pro Add-On', 'intenttarget-pro' ),
+            'prefix' => 'ITPP-',
+        ),
+    );
+
+    return apply_filters( 'lee_dev_master_hub_supported_plugins_8521', $supported );
+}
+
+/**
+ * Resolves an incoming plugin slug to its supported configuration, falling back to 'core' so
+ * historic licence rows and legacy client requests without an explicit slug remain compatible.
+ *
+ * @param string $plugin_slug Raw slug to resolve.
+ * @return array Tuple containing the resolved slug and its configuration array.
+ */
+function lee_dev_resolve_master_hub_plugin_slug_7164( $plugin_slug ) {
+    $supported = lee_dev_get_master_hub_supported_plugins_8521();
+    $slug      = sanitize_key( (string) $plugin_slug );
+
+    if ( ! isset( $supported[ $slug ] ) ) {
+        $slug = 'core';
+    }
+
+    return array( $slug, $supported[ $slug ] );
+}
+
 function lee_dev_install_master_hub_tables_2941() {
     global $wpdb;
 
@@ -36,6 +79,7 @@ function lee_dev_install_master_hub_tables_2941() {
     $sql = "CREATE TABLE $table_name (
         id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
         licence_code varchar(100) NOT NULL,
+        plugin_slug varchar(40) NOT NULL DEFAULT 'core',
         activation_email varchar(190) NOT NULL DEFAULT '',
         mapped_domain varchar(255) NOT NULL DEFAULT '',
         client_url varchar(255) NOT NULL DEFAULT '',
@@ -50,7 +94,8 @@ function lee_dev_install_master_hub_tables_2941() {
         UNIQUE KEY licence_code (licence_code),
         KEY mapped_domain (mapped_domain),
         KEY activation_email (activation_email),
-        KEY status (status)
+        KEY status (status),
+        KEY plugin_slug (plugin_slug)
     ) $charset_collate;";
 
     require_once ABSPATH . 'wp-admin/includes/upgrade.php';
@@ -69,10 +114,13 @@ function lee_dev_register_master_hub_menu_5728() {
     );
 }
 
-function lee_dev_generate_activation_code_4197() {
+function lee_dev_generate_activation_code_4197( $plugin_slug = 'core' ) {
+    list( , $config ) = lee_dev_resolve_master_hub_plugin_slug_7164( $plugin_slug );
+    $prefix           = isset( $config['prefix'] ) ? $config['prefix'] : 'ITP-';
+
+    global $wpdb;
     do {
-        $code = 'ITP-' . strtoupper( wp_generate_password( 4, false, false ) ) . '-' . strtoupper( wp_generate_password( 4, false, false ) ) . '-' . strtoupper( wp_generate_password( 4, false, false ) );
-        global $wpdb;
+        $code = $prefix . strtoupper( wp_generate_password( 4, false, false ) ) . '-' . strtoupper( wp_generate_password( 4, false, false ) ) . '-' . strtoupper( wp_generate_password( 4, false, false ) );
         $exists = $wpdb->get_var( $wpdb->prepare(
             'SELECT id FROM ' . lee_dev_get_master_hub_table_name_4826() . ' WHERE licence_code = %s LIMIT 1',
             $code
@@ -103,21 +151,43 @@ function lee_dev_render_master_hub_dashboard_1109() {
         }
     }
 
-    $licences = $wpdb->get_results(
-        "SELECT id, licence_code, activation_email, mapped_domain, client_url, status, activation_count, created_at, activated_at, deactivated_at, last_seen_at FROM $table_name ORDER BY last_seen_at DESC, created_at DESC LIMIT 200"
-    );
+    $supported_plugins = lee_dev_get_master_hub_supported_plugins_8521();
+
+    $filter_slug = isset( $_GET['plugin_slug'] ) ? sanitize_key( wp_unslash( $_GET['plugin_slug'] ) ) : '';
+    if ( $filter_slug !== '' && ! isset( $supported_plugins[ $filter_slug ] ) ) {
+        $filter_slug = '';
+    }
+
+    if ( $filter_slug !== '' ) {
+        $licences = $wpdb->get_results( $wpdb->prepare(
+            "SELECT id, licence_code, plugin_slug, activation_email, mapped_domain, client_url, status, activation_count, created_at, activated_at, deactivated_at, last_seen_at FROM $table_name WHERE plugin_slug = %s ORDER BY last_seen_at DESC, created_at DESC LIMIT 200",
+            $filter_slug
+        ) );
+    } else {
+        $licences = $wpdb->get_results(
+            "SELECT id, licence_code, plugin_slug, activation_email, mapped_domain, client_url, status, activation_count, created_at, activated_at, deactivated_at, last_seen_at FROM $table_name ORDER BY last_seen_at DESC, created_at DESC LIMIT 200"
+        );
+    }
 
     ?>
     <div class="wrap">
         <h1><?php echo esc_html__( 'IntentTarget Licensing Master Hub', 'intenttarget-pro' ); ?></h1>
-        <p><?php echo esc_html__( 'Review active licence codes, activation emails, mapped domains, and remote client status from one secure control panel.', 'intenttarget-pro' ); ?></p>
+        <p><?php echo esc_html__( 'Review active licence codes, activation emails, mapped domains, and remote client status from one secure control panel. Codes can be issued separately for IntentTarget Core and the IntentTarget Pro add-on.', 'intenttarget-pro' ); ?></p>
 
         <div style="background:#fff;border:1px solid #ccd0d4;border-left:4px solid #2271b1;padding:16px 18px;margin:18px 0 22px 0;max-width:900px;">
             <h2 style="margin-top:0;"><?php echo esc_html__( 'Create Customer Licence Code', 'intenttarget-pro' ); ?></h2>
-            <p><?php echo esc_html__( 'Generate a paid customer licence code here, then send the ITP code to the customer for plugin activation.', 'intenttarget-pro' ); ?></p>
-            <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
+            <p><?php echo esc_html__( 'Generate a paid customer licence code here, then send the issued code to the customer for plugin activation. Choose the product the customer has purchased; the prefix will be applied automatically.', 'intenttarget-pro' ); ?></p>
+            <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;">
                 <input type="hidden" name="action" value="itp_create_licence" />
                 <?php wp_nonce_field( 'itp_create_licence_code', 'itp_create_licence_nonce' ); ?>
+                <label>
+                    <span style="display:block;font-weight:600;margin-bottom:4px;"><?php echo esc_html__( 'Plugin / Product', 'intenttarget-pro' ); ?></span>
+                    <select name="plugin_slug">
+                        <?php foreach ( $supported_plugins as $slug => $config ) : ?>
+                            <option value="<?php echo esc_attr( $slug ); ?>"><?php echo esc_html( $config['label'] . ' (' . $config['prefix'] . 'XXXX-XXXX-XXXX)' ); ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </label>
                 <label>
                     <span style="display:block;font-weight:600;margin-bottom:4px;"><?php echo esc_html__( 'Customer Email', 'intenttarget-pro' ); ?></span>
                     <input type="email" name="activation_email" class="regular-text" placeholder="customer@example.com" />
@@ -126,10 +196,23 @@ function lee_dev_render_master_hub_dashboard_1109() {
             </form>
         </div>
 
+        <form method="get" action="" style="margin-bottom:14px;display:flex;gap:8px;align-items:center;">
+            <input type="hidden" name="page" value="intenttarget-master-hub" />
+            <label for="itp-filter-plugin-slug" style="font-weight:600;"><?php echo esc_html__( 'Filter by product:', 'intenttarget-pro' ); ?></label>
+            <select id="itp-filter-plugin-slug" name="plugin_slug">
+                <option value=""><?php echo esc_html__( 'All products', 'intenttarget-pro' ); ?></option>
+                <?php foreach ( $supported_plugins as $slug => $config ) : ?>
+                    <option value="<?php echo esc_attr( $slug ); ?>" <?php selected( $filter_slug, $slug ); ?>><?php echo esc_html( $config['label'] ); ?></option>
+                <?php endforeach; ?>
+            </select>
+            <button type="submit" class="button"><?php echo esc_html__( 'Apply', 'intenttarget-pro' ); ?></button>
+        </form>
+
         <table class="widefat striped">
             <thead>
                 <tr>
                     <th><?php echo esc_html__( 'Licence Code', 'intenttarget-pro' ); ?></th>
+                    <th><?php echo esc_html__( 'Product', 'intenttarget-pro' ); ?></th>
                     <th><?php echo esc_html__( 'Activation Email', 'intenttarget-pro' ); ?></th>
                     <th><?php echo esc_html__( 'Mapped Domain', 'intenttarget-pro' ); ?></th>
                     <th><?php echo esc_html__( 'Client URL', 'intenttarget-pro' ); ?></th>
@@ -142,12 +225,16 @@ function lee_dev_render_master_hub_dashboard_1109() {
             <tbody>
                 <?php if ( empty( $licences ) ) : ?>
                     <tr>
-                        <td colspan="8"><?php echo esc_html__( 'No licence activations have been logged yet.', 'intenttarget-pro' ); ?></td>
+                        <td colspan="9"><?php echo esc_html__( 'No licence activations have been logged yet.', 'intenttarget-pro' ); ?></td>
                     </tr>
                 <?php else : ?>
-                    <?php foreach ( $licences as $licence ) : ?>
+                    <?php foreach ( $licences as $licence ) :
+                        $row_slug   = ! empty( $licence->plugin_slug ) ? $licence->plugin_slug : 'core';
+                        $row_label  = isset( $supported_plugins[ $row_slug ]['label'] ) ? $supported_plugins[ $row_slug ]['label'] : ucfirst( $row_slug );
+                    ?>
                         <tr>
                             <td><code><?php echo esc_html( $licence->licence_code ); ?></code></td>
+                            <td><strong><?php echo esc_html( $row_label ); ?></strong></td>
                             <td><?php echo esc_html( $licence->activation_email ); ?></td>
                             <td><?php echo esc_html( $licence->mapped_domain ); ?></td>
                             <td><?php echo esc_html( $licence->client_url ); ?></td>
@@ -187,25 +274,30 @@ function lee_dev_process_master_hub_code_creation_6274() {
 
     check_admin_referer( 'itp_create_licence_code', 'itp_create_licence_nonce' );
 
+    $requested_slug          = isset( $_POST['plugin_slug'] ) ? sanitize_key( wp_unslash( $_POST['plugin_slug'] ) ) : 'core';
+    list( $plugin_slug, )    = lee_dev_resolve_master_hub_plugin_slug_7164( $requested_slug );
+    $activation_email        = isset( $_POST['activation_email'] ) ? sanitize_email( wp_unslash( $_POST['activation_email'] ) ) : '';
+
     global $wpdb;
-    $table_name       = lee_dev_get_master_hub_table_name_4826();
-    $licence_code     = lee_dev_generate_activation_code_4197();
-    $activation_email = isset( $_POST['activation_email'] ) ? sanitize_email( wp_unslash( $_POST['activation_email'] ) ) : '';
+    $table_name   = lee_dev_get_master_hub_table_name_4826();
+    $licence_code = lee_dev_generate_activation_code_4197( $plugin_slug );
 
     $wpdb->insert(
         $table_name,
         array(
             'licence_code'     => $licence_code,
+            'plugin_slug'      => $plugin_slug,
             'activation_email' => $activation_email,
             'status'           => 'pending',
             'created_at'       => current_time( 'mysql' ),
         ),
-        array( '%s', '%s', '%s', '%s' )
+        array( '%s', '%s', '%s', '%s', '%s' )
     );
 
     wp_safe_redirect( add_query_arg( array(
-        'page'       => 'intenttarget-master-hub',
-        'itp-status' => 'created',
+        'page'        => 'intenttarget-master-hub',
+        'itp-status'  => 'created',
+        'plugin_slug' => $plugin_slug,
     ), admin_url( 'admin.php' ) ) );
     exit;
 }
@@ -351,6 +443,9 @@ function lee_dev_handle_remote_activation_request_6842( WP_REST_Request $request
     $client_url       = esc_url_raw( $params['client_url'] ?? $params['site_url'] ?? $mapped_domain );
     $request_ip       = sanitize_text_field( $_SERVER['REMOTE_ADDR'] ?? '' );
 
+    list( $requested_slug, $requested_config ) = lee_dev_resolve_master_hub_plugin_slug_7164( $params['plugin_slug'] ?? 'core' );
+    $expected_prefix                           = isset( $requested_config['prefix'] ) ? $requested_config['prefix'] : 'ITP-';
+
     if ( empty( $activation_email ) || empty( $mapped_domain ) || empty( $client_url ) ) {
         return new WP_REST_Response( array(
             'success' => false,
@@ -367,11 +462,12 @@ function lee_dev_handle_remote_activation_request_6842( WP_REST_Request $request
         ), 400 );
     }
 
-    if ( strpos( $licence_code, 'ITP-' ) !== 0 ) {
+    if ( strpos( $licence_code, $expected_prefix ) !== 0 ) {
         return new WP_REST_Response( array(
-            'success' => false,
-            'status'  => 'unauthorised',
-            'message' => 'Licence code must use the ITP- activation prefix.',
+            'success'     => false,
+            'status'      => 'unauthorised',
+            'plugin_slug' => $requested_slug,
+            'message'     => sprintf( 'Licence code must use the %s activation prefix for this product.', $expected_prefix ),
         ), 403 );
     }
 
@@ -387,7 +483,21 @@ function lee_dev_handle_remote_activation_request_6842( WP_REST_Request $request
             'success'      => false,
             'status'       => 'unauthorised',
             'licence_code' => $licence_code,
+            'plugin_slug'  => $requested_slug,
             'message'      => 'This licence code was not issued by the master hub.',
+        ), 403 );
+    }
+
+    // 1b. Cross-product mismatch: a Core licence cannot activate Pro, and vice versa.
+    $existing_slug = ! empty( $existing->plugin_slug ) ? $existing->plugin_slug : 'core';
+    if ( $existing_slug !== $requested_slug ) {
+        return new WP_REST_Response( array(
+            'success'         => false,
+            'status'          => 'unauthorised',
+            'licence_code'    => $licence_code,
+            'plugin_slug'     => $requested_slug,
+            'issued_for_slug' => $existing_slug,
+            'message'         => 'This licence is issued for a different IntentTarget product and cannot activate this plugin.',
         ), 403 );
     }
 
@@ -410,6 +520,7 @@ function lee_dev_handle_remote_activation_request_6842( WP_REST_Request $request
             'success'      => false,
             'status'       => 'deactivated',
             'licence_code' => $licence_code,
+            'plugin_slug'  => $existing_slug,
             'message'      => 'This licence has been deactivated by the master hub.',
         ), 403 );
     }
@@ -439,6 +550,7 @@ function lee_dev_handle_remote_activation_request_6842( WP_REST_Request $request
                 'success'      => false,
                 'status'       => 'unauthorised',
                 'licence_code' => $licence_code,
+                'plugin_slug'  => $existing_slug,
                 'message'      => 'This licence is already locked to a different domain. Please purchase a new licence or contact support to transfer it.',
             ), 403 );
         }
@@ -466,6 +578,7 @@ function lee_dev_handle_remote_activation_request_6842( WP_REST_Request $request
         'success'      => true,
         'status'       => 'active',
         'licence_code' => $licence_code,
+        'plugin_slug'  => $existing_slug,
         'message'      => 'Licence activated successfully.',
     ), 200 );
 }

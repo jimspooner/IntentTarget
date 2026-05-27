@@ -22,9 +22,9 @@ function lee_dev_calculate_group_propensity_1289($group_name, $user_id) {
     $manual_data_clean = is_array($manual_data) ? array_map('sanitize_title', $manual_data) : [];
 
     // 1. Manual User Preferences weight (+50 points)
-    if (is_array($manual_data)) {
+if (is_array($manual_data)) {
         foreach ($keywords as $word) {
-            if (in_array($word, $manual_data_clean, true)) {
+     if (in_array($word, $manual_data_clean, true)) {
                 $score += 50;
                 break; 
             }

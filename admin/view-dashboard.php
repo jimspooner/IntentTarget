@@ -110,14 +110,17 @@ $active_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'dashboa
     <?php return; ?>
     <?php endif; ?>
 
-    <h1>IntentTarget Pro - Core Management Suite</h1>
+    <h1>IntentTarget - Core Management Suite</h1>
     
     <nav class="nav-tab-wrapper">
         <a href="?page=itp-search-dashboard&tab=keyword_scanner" class="nav-tab <?php echo ($active_tab === 'keyword_scanner') ? 'nav-tab-active' : ''; ?>">Scanner & Dictionary</a>
         <a href="?page=itp-search-dashboard&tab=popout_adverts" class="nav-tab <?php echo ($active_tab === 'popout_adverts') ? 'nav-tab-active' : ''; ?>">Dynamic Adverts</a>
         <a href="?page=itp-search-dashboard&tab=dashboard" class="nav-tab <?php echo ($active_tab === 'dashboard') ? 'nav-tab-active' : ''; ?>">Dashboard & Search Log</a>
-        <a href="?page=itp-search-dashboard&tab=design_customiser" class="nav-tab <?php echo ($active_tab === 'design_customiser') ? 'nav-tab-active' : ''; ?>">Advert Styling</a>
         <a href="?page=itp-search-dashboard&tab=access_control" class="nav-tab <?php echo ($active_tab === 'access_control') ? 'nav-tab-active' : ''; ?>">Access Control</a>
+        <?php 
+        // Allow Pro add-ons to inject their own tabs here
+        do_action( 'itp_core_dashboard_tabs', $active_tab ); 
+        ?>
     </nav>
 
     <?php 
@@ -226,74 +229,7 @@ $active_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'dashboa
 
     <?php 
     // =========================================================================
-    // TAB 3: DESIGN COLOR CUSTOMISER
-    // =========================================================================
-    elseif ( $active_tab === 'design_customiser' ) : 
-        if ( isset($_POST['itp_save_design']) && current_user_can('manage_options') ) {
-            check_admin_referer('itp_save_design_action', 'itp_save_design_nonce');
-            
-            $design = isset($_POST['itp_design_settings']) ? array_map('sanitize_text_field', $_POST['itp_design_settings']) : [];
-            update_option('itp_design_settings', $design);
-            
-            echo '<div class="notice notice-success is-dismissible"><p>Visual interface colours saved successfully.</p></div>';
-        }
-
-        $colors = get_option('itp_design_settings', []);
-        
-        $c_heading      = esc_attr($colors['heading'] ?? '#074e85');
-        $c_recommended  = esc_attr($colors['recommended'] ?? '#e1ad01');
-        $c_button       = esc_attr($colors['button'] ?? '#074e85');
-        $c_button_text  = esc_attr($colors['button_text'] ?? '#ffffff');
-        ?>
-        <form method="post" action="">
-            <?php wp_nonce_field('itp_save_design_action', 'itp_save_design_nonce'); ?>
-            <div style="background:#fff; padding:25px; border:1px solid #ccd0d4; border-radius:4px; margin-top: 15px;">
-                <h3 style="margin-top: 0;">Interface Presentation Colour Profiles</h3>
-                <p class="description">Control the dynamic palette rendered across pop-out boxes, top message alert bars, and client account recommendations.</p>
-                
-                <table class="form-table" style="margin-top: 20px;">
-                    <tr>
-                        <th style="width: 250px;"><label>Heading & Offer Titles Color</label></th>
-                        <td>
-                            <input type="color" name="itp_design_settings[heading]" value="<?php echo $c_heading; ?>" style="vertical-align: middle; width:50px; height:30px; padding:0; cursor:pointer;" />
-                            <input type="text" value="<?php echo $c_heading; ?>" class="small-text" readonly style="vertical-align: middle; background:#eee; text-align:center; margin-left:5px;" />
-                            <p class="description" style="margin-top:5px;">Applies to recommend block titles and question prompts.</p>
-                        </td>
-                    </tr>
-                    <tr>
-                        <th><label>"Recommended" Badge Background</label></th>
-                        <td>
-                            <input type="color" name="itp_design_settings[recommended]" value="<?php echo $c_recommended; ?>" style="vertical-align: middle; width:50px; height:30px; padding:0; cursor:pointer;" />
-                            <input type="text" value="<?php echo $c_recommended; ?>" class="small-text" readonly style="vertical-align: middle; background:#eee; text-align:center; margin-left:5px;" />
-                            <p class="description" style="margin-top:5px;">Applies to the 'Recommended' chip backgrounds and search feedback labels.</p>
-                        </td>
-                    </tr>
-                    <tr>
-                        <th><label>Action Button Background</label></th>
-                        <td>
-                            <input type="color" name="itp_design_settings[button]" value="<?php echo $c_button; ?>" style="vertical-align: middle; width:50px; height:30px; padding:0; cursor:pointer;" />
-                            <input type="text" value="<?php echo $c_button; ?>" class="small-text" readonly style="vertical-align: middle; background:#eee; text-align:center; margin-left:5px;" />
-                            <p class="description" style="margin-top:5px;">Applies to interaction links inside recommendations and forms.</p>
-                        </td>
-                    </tr>
-                    <tr>
-                        <th><label>Action Button Label Text Color</label></th>
-                        <td>
-                            <input type="color" name="itp_design_settings[button_text]" value="<?php echo $c_button_text; ?>" style="vertical-align: middle; width:50px; height:30px; padding:0; cursor:pointer;" />
-                            <input type="text" value="<?php echo $c_button_text; ?>" class="small-text" readonly style="vertical-align: middle; background:#eee; text-align:center; margin-left:5px;" />
-                        </td>
-                    </tr>
-                </table>
-
-                <p class="submit" style="margin-top: 25px; padding-top: 15px; border-top: 1px solid #eee;">
-                    <input type="submit" name="itp_save_design" class="button button-primary button-large" value="Save Interface Styles" />
-                </p>
-            </div>
-        </form>
-
-    <?php 
-    // =========================================================================
-    // TAB 4: AUTOMATED KEYPHRASE SCANNER
+    // TAB 3: AUTOMATED KEYPHRASE SCANNER
     // =========================================================================
     elseif ( $active_tab === 'keyword_scanner' ) : 
         $taxonomy_groups = lee_dev_get_filtered_taxonomy_groups_7316();
@@ -573,7 +509,7 @@ $active_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'dashboa
 
     <?php 
     // =========================================================================
-    // TAB 5: ACCESS CONFIGURATION
+    // TAB 4: ACCESS CONFIGURATION
     // =========================================================================
     elseif ( $active_tab === 'access_control' ) : 
         if ( function_exists('lee_dev_render_access_control_tab_content_9281') ) {
@@ -612,6 +548,10 @@ $active_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'dashboa
             </div>
             <?php
         }
+
+    else : 
+        do_action( 'itp_core_dashboard_tab_content_' . $active_tab );
     endif; 
     ?>
+</div>
 </div>
