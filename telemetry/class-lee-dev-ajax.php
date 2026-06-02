@@ -56,14 +56,27 @@ function lee_dev_handle_search_feedback_ajax_8271() {
 // =========================================================================
 // 2. HIGH ENGAGEMENT AJAX CALLBACK REGISTER
 // =========================================================================
+// Cache-safety + auth fix (audit V-1): the previous version trusted $_POST['user_id'] which
+// under any full-page cache (WP Rocket / LiteSpeed / Varnish) carried the first cached visitor's
+// numeric ID into every subsequent visitor's request, allowing engagement flags to be written
+// against the wrong user. The handler now ignores any client-supplied ID and uses the live
+// session identity only. The nonce is minted fresh per-request via the bootstrap REST endpoint
+// so cached HTML can never carry a stale token.
 add_action('wp_ajax_itp_mark_high_engagement', 'lee_dev_mark_high_engagement_ajax_9421');
 add_action('wp_ajax_nopriv_itp_mark_high_engagement', 'lee_dev_mark_high_engagement_ajax_9421');
 function lee_dev_mark_high_engagement_ajax_9421() {
-    $user_id = isset($_POST['user_id']) ? intval($_POST['user_id']) : get_current_user_id();
-    if ( $user_id > 0 ) {
-        update_user_meta($user_id, 'itp_high_engagement_flag', 'yes');
-        update_user_meta($user_id, 'itp_last_interaction_date', current_time('mysql'));
-        wp_send_json_success();
+    if ( ! check_ajax_referer( 'itp_high_engagement_nonce', 'nonce', false ) ) {
+        wp_send_json_error( array( 'message' => 'Invalid security token.' ), 403 );
     }
-    wp_send_json_error();
+
+    // Authoritative identity comes from the live WordPress session — never from POST data.
+    $user_id = get_current_user_id();
+    if ( $user_id <= 0 ) {
+        // Guests have no user_meta record to flag, so accept the click silently without writes.
+        wp_send_json_success( array( 'tracked' => false, 'reason' => 'guest' ) );
+    }
+
+    update_user_meta( $user_id, 'itp_high_engagement_flag', 'yes' );
+    update_user_meta( $user_id, 'itp_last_interaction_date', current_time( 'mysql' ) );
+    wp_send_json_success( array( 'tracked' => true ) );
 }

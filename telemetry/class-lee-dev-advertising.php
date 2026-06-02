@@ -155,16 +155,191 @@ function lee_dev_get_intent_based_product_9384() {
 }
 
 // =========================================================================
-// 3. FOOTER INTENT FORM SLIDE-OUT POPUP MODULE
+// 2b. CACHE-SAFE BOOTSTRAP REST ENDPOINT
 // =========================================================================
+// Returns the per-visitor data (advert pick, greeting, fresh nonces, dashboard adverts) that
+// would otherwise have been baked into cached HTML by the slide-in / dashboard / preferences
+// renderers. The endpoint is called by assets/js/itp-frontend-ui.js on every page load and is
+// served with Cache-Control: no-store so neither WP Rocket / LiteSpeed / Varnish nor Cloudflare
+// will ever cache it. Per-visitor data therefore stays accurate even when the surrounding HTML
+// has been cached for 24h+.
+add_action( 'rest_api_init', 'lee_dev_register_frontend_bootstrap_rest_4920' );
+function lee_dev_register_frontend_bootstrap_rest_4920() {
+    register_rest_route( 'intenttarget/v1', '/bootstrap', array(
+        'methods'             => 'GET',
+        'callback'            => 'lee_dev_handle_frontend_bootstrap_rest_4920',
+        'permission_callback' => '__return_true',
+        'args'                => array(
+            'ctx' => array(
+                'description'       => 'Full URL of the page the visitor is currently viewing.',
+                'type'              => 'string',
+                'required'          => false,
+                'sanitize_callback' => 'esc_url_raw',
+            ),
+        ),
+    ) );
+}
+
+function lee_dev_handle_frontend_bootstrap_rest_4920( $request ) {
+    // Guarantee no caching layer stores this response.
+    nocache_headers();
+    header( 'Cache-Control: no-store, no-cache, must-revalidate, private, max-age=0' );
+
+    $payload = array(
+        'licence_active'  => false,
+        'popup'           => null,
+        'dashboard'       => null,
+        'nonces'          => array(),
+        'show_branding'   => true,
+        'pro_roi_enabled' => false,
+    );
+
+    if ( ! function_exists( 'lee_dev_has_authorised_licence_7365' ) || ! lee_dev_has_authorised_licence_7365() ) {
+        return rest_ensure_response( $payload );
+    }
+
+    $payload['licence_active'] = true;
+    $payload['show_branding']  = (bool) apply_filters( 'itp_show_popup_branding', true );
+
+    // Mint fresh nonces against the live visitor's session. These never live inside cached HTML.
+    $payload['nonces'] = array(
+        'search_feedback' => wp_create_nonce( 'itp_ajax_nonce' ),
+        'high_engagement' => wp_create_nonce( 'itp_high_engagement_nonce' ),
+        'user_interests'  => wp_create_nonce( 'itp_save_user_interests' ),
+    );
+
+    // ------------------------------------------------------------------
+    // Derive the visitor's page context from the supplied URL. The REST request itself has no
+    // is_search() / is_account_page() context, so we reconstruct it from the ctx parameter.
+    // ------------------------------------------------------------------
+    $ctx_url   = (string) $request->get_param( 'ctx' );
+    $parsed    = $ctx_url !== '' ? wp_parse_url( $ctx_url ) : array();
+    $path      = isset( $parsed['path'] ) ? (string) $parsed['path'] : '';
+    $query_arr = array();
+    if ( ! empty( $parsed['query'] ) ) {
+        wp_parse_str( $parsed['query'], $query_arr );
+    }
+
+    $is_search_page = ! empty( $query_arr['s'] );
+    $search_query   = $is_search_page ? sanitize_text_field( (string) $query_arr['s'] ) : '';
+
+    $is_checkout_page = false;
+    $is_account_page  = false;
+    if ( $path !== '' && class_exists( 'WooCommerce' ) ) {
+        $checkout_slug = 'checkout';
+        $account_slug  = 'my-account';
+        if ( function_exists( 'wc_get_page_id' ) ) {
+            $checkout_id = (int) wc_get_page_id( 'checkout' );
+            $account_id  = (int) wc_get_page_id( 'myaccount' );
+            if ( $checkout_id > 0 ) {
+                $name = get_post_field( 'post_name', $checkout_id );
+                if ( is_string( $name ) && $name !== '' ) { $checkout_slug = $name; }
+            }
+            if ( $account_id > 0 ) {
+                $name = get_post_field( 'post_name', $account_id );
+                if ( is_string( $name ) && $name !== '' ) { $account_slug = $name; }
+            }
+        }
+        $is_checkout_page = ( strpos( $path, '/' . $checkout_slug ) !== false );
+        $is_account_page  = ( strpos( $path, '/' . $account_slug ) !== false );
+    }
+
+    // ------------------------------------------------------------------
+    // Slide-in popup data — null when the page is checkout/account, or when no advert applies.
+    // ------------------------------------------------------------------
+    if ( ! $is_checkout_page && ! $is_account_page ) {
+        $popup = array(
+            'is_search_page' => (bool) $is_search_page,
+            'search_query'   => $search_query,
+            'greeting'       => '',
+            'advert'         => null,
+        );
+        $current_user = wp_get_current_user();
+        if ( $current_user && $current_user->exists() && (int) $current_user->ID > 0 ) {
+            $popup['greeting'] = (string) $current_user->display_name;
+        }
+        if ( ! $is_search_page ) {
+            $featured = lee_dev_get_intent_based_product_9384();
+            // lee_dev_get_intent_based_product_9384 returns the flat advert when not on the
+            // dashboard, which is exactly what we want here.
+            if ( is_array( $featured ) && ! isset( $featured['primary'] ) ) {
+                $popup['advert'] = array(
+                    'title'  => isset( $featured['title'] ) ? (string) $featured['title'] : '',
+                    'desc'   => isset( $featured['desc'] ) ? (string) $featured['desc'] : '',
+                    'url'    => isset( $featured['url'] ) ? esc_url_raw( (string) $featured['url'] ) : '',
+                    'btn'    => isset( $featured['btn'] ) ? (string) $featured['btn'] : '',
+                    'intent' => isset( $featured['intent'] ) ? sanitize_key( (string) $featured['intent'] ) : '',
+                );
+            }
+        }
+        // Only expose the popup when there is something to show, so the JS can hide the shell.
+        if ( $popup['is_search_page'] || $popup['advert'] ) {
+            $payload['popup'] = $popup;
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // My Account dashboard adverts (primary + secondary)
+    // ------------------------------------------------------------------
+    if ( $is_account_page && class_exists( 'WooCommerce' ) && function_exists( 'lee_dev_get_global_priority_advert_7136' ) ) {
+        $primary = lee_dev_get_global_priority_advert_7136();
+        if ( is_array( $primary ) && ! empty( $primary['title'] ) ) {
+            $secondary = lee_dev_get_global_priority_advert_7136( array( isset( $primary['intent'] ) ? $primary['intent'] : '' ) );
+            $current_month = (int) date( 'n' );
+            $payload['dashboard'] = array(
+                'show_seasonal_badge' => ( $current_month >= 1 && $current_month <= 4 ),
+                'primary'             => array(
+                    'title'  => (string) $primary['title'],
+                    'desc'   => isset( $primary['desc'] ) ? (string) $primary['desc'] : '',
+                    'url'    => isset( $primary['url'] ) ? esc_url_raw( (string) $primary['url'] ) : '',
+                    'btn'    => isset( $primary['btn'] ) ? (string) $primary['btn'] : '',
+                    'intent' => isset( $primary['intent'] ) ? sanitize_key( (string) $primary['intent'] ) : '',
+                ),
+            );
+            if ( is_array( $secondary ) && ! empty( $secondary['title'] ) ) {
+                $payload['dashboard']['secondary'] = array(
+                    'title'  => (string) $secondary['title'],
+                    'desc'   => isset( $secondary['desc'] ) ? (string) $secondary['desc'] : '',
+                    'url'    => isset( $secondary['url'] ) ? esc_url_raw( (string) $secondary['url'] ) : '',
+                    'btn'    => isset( $secondary['btn'] ) ? (string) $secondary['btn'] : '',
+                    'intent' => isset( $secondary['intent'] ) ? sanitize_key( (string) $secondary['intent'] ) : '',
+                );
+            }
+        }
+    }
+
+    /**
+     * Filter the cache-safe bootstrap payload returned to the front-end runtime.
+     *
+     * Add-ons (e.g. IntentTarget Pro) hook in here to inject their own nonces and feature flags
+     * — for example the ROI click tracking nonce. The filter runs only when the core licence is
+     * authorised so callers can safely assume a valid install.
+     *
+     * @param array            $payload The payload that will be JSON-encoded back to the JS runtime.
+     * @param WP_REST_Request  $request The original request object.
+     */
+    $payload = apply_filters( 'lee_dev_frontend_bootstrap_payload_4920', $payload, $request );
+
+    return rest_ensure_response( $payload );
+}
+
+// =========================================================================
+// 3. FOOTER INTENT FORM SLIDE-OUT POPUP MODULE (cache-safe shell + CSS only)
+// =========================================================================
+// IMPORTANT — Cache-safety contract:
+// This renderer emits ONLY the static styling and an empty container shell. Every per-visitor
+// value (advert, greeting, nonces, search query, user ID) is fetched at runtime by the cache-safe
+// JS runtime from the /wp-json/intenttarget/v1/bootstrap endpoint. Do NOT add inline scripts or
+// PHP-injected dynamic data to this output — it will end up in cached HTML and break.
 add_action('wp_footer', 'lee_dev_render_intent_popup_2841');
 function lee_dev_render_intent_popup_2841() {
     if ( ! function_exists( 'lee_dev_has_authorised_licence_7365' ) || ! lee_dev_has_authorised_licence_7365() ) {
         return;
     }
 
-    // Suppress on Woo's checkout / account pages, but render normally on
-    // non-Woo sites (where these functions are undefined).
+    // Server-side suppression on Woo's checkout / account pages keeps the shell off those URLs
+    // entirely. The licence option flips infrequently and admin actions clear the cache, so this
+    // gate is cache-safe.
     if ( function_exists( 'is_checkout' ) && is_checkout() ) {
         return;
     }
@@ -172,59 +347,8 @@ function lee_dev_render_intent_popup_2841() {
         return;
     }
 
-    $is_search_page = is_search();
-    $featured = null;
-
-    if ( !$is_search_page ) {
-        $featured = lee_dev_get_intent_based_product_9384(); 
-        if (!$featured) return;
-    }
-
-    if ( $is_search_page && isset($_POST['itp_search_feedback_submit']) ) {
-        global $wpdb;
-        $table_name = $wpdb->prefix . 'itp_search_feedback';
-        $user_id = get_current_user_id();
-        $search_query = sanitize_text_field($_POST['search_query']);
-
-        $existing_id = $wpdb->get_var($wpdb->prepare(
-            "SELECT id FROM $table_name WHERE user_id = %d AND search_query = %s AND found_result = 'implicit' ORDER BY submitted_at DESC LIMIT 1",
-            $user_id,
-            $search_query
-        ));
-
-        if ( $existing_id ) {
-            $wpdb->update(
-                $table_name,
-                array(
-                    'found_result'   => sanitize_text_field($_POST['found_result']),
-                    'feedback_notes' => isset($_POST['feedback_notes']) ? sanitize_textarea_field($_POST['feedback_notes']) : ''
-                ),
-                array('id' => $existing_id),
-                array('%s', '%s'),
-                array('%d')
-            );
-        } else {
-            $wpdb->insert(
-                $table_name,
-                array(
-                    'user_id'        => $user_id,
-                    'search_query'   => $search_query,
-                    'found_result'   => sanitize_text_field($_POST['found_result']),
-                    'feedback_notes' => isset($_POST['feedback_notes']) ? sanitize_textarea_field($_POST['feedback_notes']) : '',
-                    'submitted_at'   => current_time('mysql')
-                ),
-                array('%d', '%s', '%s', '%s', '%s')
-            );
-        }
-
-        setcookie('itp_popup_shown', 'true', time() + 2592000, '/');
-        $_COOKIE['itp_popup_shown'] = 'true'; 
-    }
-    
-    // --- FETCH CUSTOM DESIGN SETTINGS ---
+    // --- FETCH CUSTOM DESIGN SETTINGS (site-wide, identical for every visitor) ---
     $colors = get_option('itp_design_settings', []);
-    
-    // Set fallback defaults if no custom colours have been saved
     $c_heading     = esc_attr($colors['heading'] ?? '#1d2327');
     $c_recommended = esc_attr($colors['recommended'] ?? '#e1ad01');
     $c_button      = esc_attr($colors['button'] ?? '#2271b1');
@@ -370,137 +494,25 @@ function lee_dev_render_intent_popup_2841() {
             margin-top:5px;
         }
     </style>
-    <div id="intent-slidein" class="itp-popup-hidden" role="dialog" aria-live="polite">
-        <button type="button" class="itp-popup-close" aria-label="Close">&times;</button>
-
-        <?php if ( $is_search_page ) : ?>
-            <span class="itp-popup-label">Search Feedback</span>
-            <?php if ( isset($_POST['itp_search_feedback_submit']) ) : ?>
-                <p class="itp-popup-thanks">Thank you for your feedback!</p>
-                <script>setTimeout(function(){ var p = document.getElementById('intent-slidein'); if (p) { p.classList.remove('itp-popup-visible'); p.classList.add('itp-popup-hidden'); } }, 2000);</script>
-            <?php else : ?>
-                <h4 class="itp-popup-title">Did you find what you were looking for?</h4>
-                <form method="post" action="">
-                    <input type="hidden" name="search_query" value="<?php echo esc_attr(get_search_query()); ?>">
-                    <input type="hidden" name="itp_search_feedback_submit" value="1">
-                    <div class="itp-popup-btn-row">
-                        <button type="submit" name="found_result" value="yes" class="itp-popup-btn">Yes</button>
-                        <button type="button" id="itp-search-no-toggle" class="itp-popup-btn itp-popup-btn-secondary">No</button>
-                    </div>
-                    <div id="itp-feedback-extra" class="itp-popup-feedback-extra" style="display:none;">
-                        <input type="hidden" id="itp-found-result-hidden" name="found_result" value="no" disabled>
-                        <label class="itp-popup-feedback-label">What were you hunting for today?</label>
-                        <textarea name="feedback_notes" rows="2" placeholder="Tell us how we can help..."></textarea>
-                        <button type="submit" onclick="document.getElementById('itp-found-result-hidden').disabled=false;" class="itp-popup-btn" style="margin-top:8px;">Submit Details</button>
-                    </div>
-                </form>
-                <script>
-                document.addEventListener('DOMContentLoaded', function() {
-                    var btn = document.getElementById('itp-search-no-toggle');
-                    if (btn) btn.addEventListener('click', function(e) { e.preventDefault(); document.getElementById('itp-feedback-extra').style.display = 'block'; });
-                });
-                </script>
-            <?php endif; ?>
-        <?php elseif ( isset($featured) ) : ?>
-            <span class="itp-popup-label">Recommended</span>
-            <?php $cu = wp_get_current_user(); if ( 0 !== $cu->ID ) : ?>
-                <p class="itp-popup-greet">Hi, <?php echo esc_html($cu->display_name); ?></p>
-            <?php endif; ?>
-            <?php $itp_featured_intent = isset( $featured['intent'] ) ? sanitize_key( $featured['intent'] ) : ''; ?>
-            <a href="<?php echo esc_url($featured['url']); ?>" class="itp-popup-title" data-itp-track="1" data-itp-intent="<?php echo esc_attr( $itp_featured_intent ); ?>" data-itp-source="slidein"><?php echo esc_html($featured['title']); ?></a>
-            <p class="itp-popup-desc"><?php echo esc_html($featured['desc']); ?></p>
-            <a href="<?php echo esc_url($featured['url']); ?>" class="itp-popup-btn itp-button" data-itp-track="1" data-itp-intent="<?php echo esc_attr( $itp_featured_intent ); ?>" data-itp-source="slidein"><?php echo esc_html($featured['btn']); ?></a>
-        <?php endif; ?>
-        <?php if ( apply_filters( 'itp_show_popup_branding', true ) ) : ?>
-            <div class="itp-branding-link">
-                <a href="https://intenttargetpro.com" target="_blank" rel="noopener noreferrer">Powered by IntentTargetPro</a>
-            </div>
-        <?php endif; ?>
-    </div>
-
-    <script>
-    (function() {
-        var ajaxUrl = <?php echo wp_json_encode( admin_url( 'admin-ajax.php' ) ); ?>;
-        var userId  = <?php echo wp_json_encode( (string) get_current_user_id() ); ?>;
-        var revealDelayMs = 1500;
-
-        function readCookies() { return ( typeof document !== 'undefined' && document.cookie ) ? document.cookie : ''; }
-        function hasSuppressionCookie() {
-            var c = readCookies();
-            return c.indexOf( 'itp_popup_shown=' ) !== -1 || c.indexOf( 'itp_popup_interacted=' ) !== -1;
-        }
-        function hide( popup ) {
-            popup.classList.remove( 'itp-popup-visible' );
-            window.setTimeout( function() { popup.classList.add( 'itp-popup-hidden' ); }, 450 );
-        }
-        function reveal( popup ) {
-            popup.classList.remove( 'itp-popup-hidden' );
-            // Force reflow so the CSS transition triggers from the off-screen state.
-            void popup.offsetWidth;
-            popup.classList.add( 'itp-popup-visible' );
-        }
-
-        document.addEventListener( 'DOMContentLoaded', function() {
-            var popup = document.getElementById( 'intent-slidein' );
-            if ( ! popup ) { return; }
-
-            var closeBtn  = popup.querySelector( '.itp-popup-close' );
-            var actionBtn = popup.querySelector( 'a.itp-button' );
-
-            if ( ! hasSuppressionCookie() ) {
-                window.setTimeout( function() { reveal( popup ); }, revealDelayMs );
-            }
-
-            if ( closeBtn ) {
-                closeBtn.addEventListener( 'click', function( ev ) {
-                    ev.preventDefault();
-                    document.cookie = 'itp_popup_shown=true; max-age=86400; path=/; samesite=strict';
-                    hide( popup );
-                } );
-            }
-
-            if ( actionBtn && actionBtn.tagName === 'A' ) {
-                actionBtn.addEventListener( 'click', function( ev ) {
-                    ev.preventDefault();
-                    var url = this.getAttribute( 'href' );
-                    document.cookie = 'itp_popup_interacted=true; max-age=1209600; path=/; samesite=strict';
-                    var body = new URLSearchParams();
-                    body.set( 'action', 'itp_mark_high_engagement' );
-                    body.set( 'user_id', userId );
-                    fetch( ajaxUrl, {
-                        method: 'POST',
-                        credentials: 'same-origin',
-                        headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
-                        body: body.toString()
-                    } ).then( function() { window.location.href = url; } ).catch( function() { window.location.href = url; } );
-                } );
-            }
-        } );
-    })();
-    </script>
+    <div id="intent-slidein" class="itp-popup-hidden" role="dialog" aria-live="polite" hidden></div>
     <?php
 }
 
 // =========================================================================
-// 4. WOOCOMMERCE MY ACCOUNT PROMO BOXES
+// 4. WOOCOMMERCE MY ACCOUNT PROMO BOXES (cache-safe shell + CSS only)
 // =========================================================================
+// Cache-safety contract: this renderer emits ONLY static CSS and an empty container shell. The
+// per-visitor advert pick (which is computed against the logged-in user's interest profile) is
+// hydrated at runtime by assets/js/itp-frontend-ui.js via the bootstrap REST endpoint. Although
+// most page caches exclude /my-account/ by default, this surface is now safe even when site
+// owners do cache logged-in pages.
 add_action('woocommerce_account_dashboard', 'lee_dev_add_dashboard_recommendation_5824');
 function lee_dev_add_dashboard_recommendation_5824() {
     if ( ! function_exists( 'lee_dev_has_authorised_licence_7365' ) || ! lee_dev_has_authorised_licence_7365() ) return;
     if ( ! class_exists( 'WooCommerce' ) ) return;
 
-    $adverts = function_exists('lee_dev_get_intent_based_product_9384') ? lee_dev_get_intent_based_product_9384() : null;
-    if (!$adverts || !isset($adverts['primary'])) return;
-
-    $current_month = (int) date('n');
-    $seasonal_badge = ($current_month >= 1 && $current_month <= 4)
-        ? '<span class="itp-dashboard-badge" style="background:#e67e22;color:#ffffff;">Seasonal Priority</span>'
-        : '';
-        
-    // --- FETCH CUSTOM DESIGN SETTINGS ---
+    // --- FETCH CUSTOM DESIGN SETTINGS (site-wide, identical for every visitor) ---
     $colors = get_option('itp_design_settings', []);
-    
-    // Set fallback defaults if no custom colours have been saved
     $c_heading     = esc_attr($colors['heading'] ?? '#1d2327');
     $c_recommended = esc_attr($colors['recommended'] ?? '#e1ad01');
     $c_button      = esc_attr($colors['button'] ?? '#2271b1');
@@ -589,37 +601,7 @@ function lee_dev_add_dashboard_recommendation_5824() {
             margin-top:5px;
         }
     </style>
-    <?php
-    $primary_intent   = isset( $adverts['primary']['intent'] ) ? sanitize_key( $adverts['primary']['intent'] ) : '';
-    $secondary_intent = isset( $adverts['secondary']['intent'] ) ? sanitize_key( $adverts['secondary']['intent'] ) : '';
-    ?>
-    <div class="itp-dashboard-grid">
-        <div class="itp-dashboard-offer">
-            <span class="itp-dashboard-label">Recommended</span>
-            <h3 class="itp-dashboard-title"><?php echo $seasonal_badge; ?><?php echo esc_html( $adverts['primary']['title'] ); ?></h3>
-            <p class="itp-dashboard-desc"><?php echo esc_html( $adverts['primary']['desc'] ); ?></p>
-            <a href="<?php echo esc_url( $adverts['primary']['url'] ); ?>" class="itp-dashboard-cta" data-itp-track="1" data-itp-intent="<?php echo esc_attr( $primary_intent ); ?>" data-itp-source="account_dashboard"><?php echo esc_html( $adverts['primary']['btn'] ); ?></a>
-             <?php if ( apply_filters( 'itp_show_popup_branding', true ) ) : ?>
-            <div class="itp-branding-link">
-                <a href="https://intenttargetpro.com" target="_blank" rel="noopener noreferrer">Powered by IntentTargetPro</a>
-            </div>
-        <?php endif; ?>
-        </div>
-        <?php if ( isset( $adverts['secondary'] ) ) : ?>
-            <div class="itp-dashboard-offer">
-                <span class="itp-dashboard-label">Recommended</span>
-                <h3 class="itp-dashboard-title"><?php echo esc_html( $adverts['secondary']['title'] ); ?></h3>
-                <p class="itp-dashboard-desc"><?php echo esc_html( $adverts['secondary']['desc'] ); ?></p>
-                <a href="<?php echo esc_url( $adverts['secondary']['url'] ); ?>" class="itp-dashboard-cta" data-itp-track="1" data-itp-intent="<?php echo esc_attr( $secondary_intent ); ?>" data-itp-source="account_dashboard"><?php echo esc_html( $adverts['secondary']['btn'] ); ?></a>
-                 <?php if ( apply_filters( 'itp_show_popup_branding', true ) ) : ?>
-            <div class="itp-branding-link">
-                <a href="https://intenttargetpro.com" target="_blank" rel="noopener noreferrer">Powered by IntentTargetPro</a>
-            </div>
-        <?php endif; ?>
-            </div>
-        <?php endif; ?>
-    </div>
-    <hr class="itp-dashboard-divider">
+    <div id="itp-dashboard-recommendations" data-itp-shell="account-dashboard"></div>
     <?php
 }
 
@@ -734,7 +716,13 @@ function lee_dev_preferences_shortcode_6382() {
         <p style="margin-bottom: 20px;">Select the sectors or services you are interested in.</p>
         
         <form method="post" action="">
-            <input type="hidden" name="user_interests_nonce" value="<?php echo wp_create_nonce('itp_save_user_interests'); ?>">
+            <?php /*
+             * Cache-safety: the nonce value is left empty in the cached HTML and hydrated at
+             * runtime by assets/js/itp-frontend-ui.js (look for data-itp-hydrate). A page cached
+             * for 24h+ therefore never carries a stale nonce — the JS rewrites this input with
+             * a fresh value fetched from the bootstrap REST endpoint before the user submits.
+             */ ?>
+            <input type="hidden" name="user_interests_nonce" value="" data-itp-hydrate="user_interests_nonce">
             <ul class="uk-remove-before custom-accordion">
                 <?php 
                 $count = 0;
@@ -799,95 +787,8 @@ function lee_dev_preferences_shortcode_6382() {
         </form>
     </div>
 
-    <script>
-document.addEventListener('DOMContentLoaded', function() {
-    
-    // --- 1. ACCORDION LOGIC (Single Open) ---
-    document.addEventListener('click', function(e) {
-        // Check if we clicked an accordion header
-        const clickedHeader = e.target.closest('.itp-accordion-header');
-        if (!clickedHeader) return;
-
-        // NEW: Close all other open accordions first
-        const allHeaders = document.querySelectorAll('.itp-accordion-header');
-        allHeaders.forEach(function(header) {
-            // If this header isn't the one we clicked, and it is currently active
-            if (header !== clickedHeader && header.classList.contains('active')) {
-                header.classList.remove('active'); // Remove the active class (resets icon)
-                const content = header.nextElementSibling;
-                if (content && content.classList.contains('itp-accordion-content')) {
-                    content.style.maxHeight = null; // Collapse the content
-                }
-            }
-        });
-
-        // Toggle the active class for the clicked header
-        clickedHeader.classList.toggle('active');
-
-        // Get the content div for the clicked header
-        const clickedContent = clickedHeader.nextElementSibling;
-
-        // Toggle the height for the clicked header
-        if (clickedContent && clickedContent.classList.contains('itp-accordion-content')) {
-            if (clickedContent.style.maxHeight) {
-                clickedContent.style.maxHeight = null;
-            } else {
-                clickedContent.style.maxHeight = clickedContent.scrollHeight + 'px';
-            }
-        }
-    });
-
-    // --- 2. SELECT ALL CHECKBOX LOGIC (Unchanged) ---
-    function updateSelectAllState(container, selectAllBox) {
-        const checkboxes = container.querySelectorAll('input[type="checkbox"]:not(.itp-select-all)');
-        const checkedCount = Array.from(checkboxes).filter(cb => cb.checked).length;
-
-        if (checkedCount === 0) {
-            selectAllBox.checked = false;
-            selectAllBox.indeterminate = false;
-            selectAllBox.closest('.itp-interest-item').classList.remove('itp-partial');
-        } else if (checkedCount === checkboxes.length) {
-            selectAllBox.checked = true;
-            selectAllBox.indeterminate = false;
-            selectAllBox.closest('.itp-interest-item').classList.remove('itp-partial');
-        } else {
-            selectAllBox.checked = false;
-            selectAllBox.indeterminate = true;
-            selectAllBox.closest('.itp-interest-item').classList.add('itp-partial');
-        }
-    }
-
-    const selectAllBoxes = document.querySelectorAll('.itp-select-all');
-    
-    selectAllBoxes.forEach(box => {
-        const targetId = box.getAttribute('data-target');
-        const container = document.getElementById(targetId);
-        if (container) {
-            updateSelectAllState(container, box);
-            container.querySelectorAll('input[type="checkbox"]').forEach(child => {
-                child.addEventListener('change', function() { 
-                    updateSelectAllState(container, box); 
-                });
-            });
-        }
-    });
-
-    selectAllBoxes.forEach(box => {
-        box.addEventListener('change', function() {
-            const targetId = this.getAttribute('data-target');
-            const container = document.getElementById(targetId);
-            if (container) {
-                container.querySelectorAll('input[type="checkbox"]').forEach(cb => { 
-                    cb.checked = this.checked; 
-                });
-            }
-            this.closest('.itp-interest-item').classList.remove('itp-partial');
-        });
-    });
-
-});
-</script>
-
     <?php
+    // Note: accordion + select-all behaviour is handled by assets/js/itp-frontend-ui.js
+    // (initPreferencesAccordion). No inline JS lives here so JS-combine plugins cannot break it.
     return ob_get_clean();
 }

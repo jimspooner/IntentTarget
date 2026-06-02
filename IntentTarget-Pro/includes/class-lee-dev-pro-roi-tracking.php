@@ -492,68 +492,29 @@ function lee_dev_pro_credit_gravity_submission_7390( $entry, $form ) {
 }
 
 // =========================================================================
-// 8. FRONT-END CLICK INTERCEPTOR (loaded only when Pro is active)
+// 8. FRONT-END CLICK INTERCEPTOR (Pro-gated, cache-safe via bootstrap REST)
 // =========================================================================
-add_action( 'wp_footer', 'lee_dev_pro_render_click_tracker_script_5168', 99 );
-function lee_dev_pro_render_click_tracker_script_5168() {
+// Cache-safety contract: the previous design printed an inline <script> tag containing the ROI
+// click nonce directly into the page. Any full-page cache (WP Rocket / LiteSpeed / Varnish)
+// would freeze that nonce for 24h+, after which it failed the server-side check_ajax_referer
+// and every attribution row was silently dropped — defeating the whole point of Pro analytics.
+//
+// The new design routes the nonce through the cache-safe bootstrap REST endpoint
+// (intenttarget/v1/bootstrap) and the click-tracker JS lives in assets/js/itp-frontend-ui.js.
+// We hook the bootstrap payload filter so the Pro nonce is minted fresh on every visitor's
+// request, and the front-end runtime reads it from there.
+add_filter( 'lee_dev_frontend_bootstrap_payload_4920', 'lee_dev_pro_inject_bootstrap_payload_5168', 10, 2 );
+function lee_dev_pro_inject_bootstrap_payload_5168( $payload, $request ) {
     if ( ! function_exists( 'lee_dev_is_addon_active_3812' ) || ! lee_dev_is_addon_active_3812( 'pro' ) ) {
-        return;
-    }
-    if ( is_admin() ) {
-        return;
+        return $payload;
     }
 
-    $ajax_url = admin_url( 'admin-ajax.php' );
-    $nonce    = wp_create_nonce( 'itp_pro_track_click_nonce' );
-    ?>
-    <script id="itp-pro-roi-tracker">
-    (function() {
-        var ajaxUrl = <?php echo wp_json_encode( $ajax_url ); ?>;
-        var nonce   = <?php echo wp_json_encode( $nonce ); ?>;
-
-        function fireAttributionBeacon( anchor ) {
-            var intent = anchor.getAttribute( 'data-itp-intent' ) || '';
-            var source = anchor.getAttribute( 'data-itp-source' ) || '';
-            var url    = anchor.getAttribute( 'href' ) || '';
-            var btnText= anchor.textContent ? anchor.textContent.trim() : '';
-            if ( ! intent || ! url ) { return; }
-
-            var body = new URLSearchParams();
-            body.set( 'action', 'itp_pro_track_advert_click' );
-            body.set( 'nonce', nonce );
-            body.set( 'intent', intent );
-            body.set( 'source', source );
-            body.set( 'advert_url', url );
-            body.set( 'btn_text', btnText );
-            body.set( 'page_url', window.location.href );
-
-            // keepalive guarantees the request completes even after the browser navigates away.
-            // We do NOT call preventDefault so we never conflict with other handlers (e.g. the
-            // existing slide-in engagement tracker) that own the navigation lifecycle.
-            try {
-                fetch( ajaxUrl, {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
-                    body: body.toString(),
-                    keepalive: true
-                } );
-            } catch ( e ) {
-                // Last-resort beacon for very old browsers that lack fetch+keepalive.
-                if ( navigator && navigator.sendBeacon ) {
-                    try { navigator.sendBeacon( ajaxUrl, body.toString() ); } catch ( e2 ) {}
-                }
-            }
-        }
-
-        document.addEventListener( 'click', function( ev ) {
-            var anchor = ev.target.closest && ev.target.closest( 'a[data-itp-track="1"]' );
-            if ( ! anchor ) { return; }
-            fireAttributionBeacon( anchor );
-        }, true );
-    })();
-    </script>
-    <?php
+    $payload['pro_roi_enabled']     = true;
+    if ( ! isset( $payload['nonces'] ) || ! is_array( $payload['nonces'] ) ) {
+        $payload['nonces'] = array();
+    }
+    $payload['nonces']['roi_click'] = wp_create_nonce( 'itp_pro_track_click_nonce' );
+    return $payload;
 }
 
 // =========================================================================

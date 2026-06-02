@@ -1,0 +1,150 @@
+/*!
+ * IntentTarget Pro — AI FAQ Generator (admin metabox styling)
+ *
+ * Scoped to #itp-pro-ai-faq-metabox-root so it cannot leak into other admin metaboxes. The
+ * palette intentionally matches the front-end FAQ section colours derived from
+ * itp_design_settings — the admin preview should feel related to the public output.
+ */
+
+#itp-pro-ai-faq-metabox-root.itp-pro-ai-faq-metabox {
+    font-size: 13px;
+    line-height: 1.45;
+    color: #1d2327;
+}
+
+#itp-pro-ai-faq-metabox-root.is-disabled {
+    opacity: 0.55;
+    pointer-events: none;
+}
+
+#itp-pro-ai-faq-metabox-root .itp-faq-metabox-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    margin-bottom: 12px;
+    background: #f6f7f7;
+    border-radius: 4px;
+    border: 1px solid #e1e1e1;
+    font-size: 12px;
+}
+
+#itp-pro-ai-faq-metabox-root .itp-faq-status-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex: 0 0 auto;
+    background: #ccc;
+}
+
+#itp-pro-ai-faq-metabox-root .itp-faq-status-ok {
+    background: #46b450;
+}
+
+#itp-pro-ai-faq-metabox-root .itp-faq-status-error {
+    background: #d63638;
+}
+
+#itp-pro-ai-faq-metabox-root .itp-faq-cost-warning {
+    background: #fff8e5;
+    border: 1px solid #f0c36d;
+    border-left: 4px solid #f0c36d;
+    padding: 10px 12px;
+    border-radius: 4px;
+    margin-bottom: 12px;
+    font-size: 12px;
+}
+
+#itp-pro-ai-faq-metabox-root .itp-faq-cost-warning strong {
+    display: block;
+    margin-bottom: 4px;
+    color: #7a5b00;
+}
+
+#itp-pro-ai-faq-metabox-root .itp-faq-cost-warning p {
+    margin: 0;
+    color: #5b5b5b;
+    line-height: 1.5;
+}
+
+#itp-pro-ai-faq-metabox-root .itp-faq-generate-btn {
+    width: 100%;
+    text-align: center;
+    margin-bottom: 6px;
+}
+
+#itp-pro-ai-faq-metabox-root .itp-faq-progress[hidden] {
+    display: none !important;
+}
+
+#itp-pro-ai-faq-metabox-root .itp-faq-progress {
+    display: flex;
+    align-items: center;
+    padding: 8px 10px;
+    margin: 6px 0 0;
+    background: #f0f6fc;
+    border: 1px solid #c5d9ec;
+    border-radius: 4px;
+    font-size: 12px;
+    color: #1d4f8c;
+}
+
+#itp-pro-ai-faq-metabox-root .itp-faq-error {
+    margin: 8px 0 0;
+    padding: 8px 10px;
+    background: #fbeae5;
+    border: 1px solid #f0b7ad;
+    border-left: 4px solid #d63638;
+    border-radius: 4px;
+    color: #8a1f1d;
+    font-size: 12px;
+    line-height: 1.45;
+    word-break: break-word;
+}
+
+#itp-pro-ai-faq-metabox-root .itp-faq-result {
+    margin-top: 12px;
+}
+
+#itp-pro-ai-faq-metabox-root .itp-faq-summary {
+    background: #fff;
+    border: 1px solid #e5e5e5;
+    border-radius: 4px;
+    padding: 10px 12px;
+}
+
+#itp-pro-ai-faq-metabox-root .itp-faq-summary-meta {
+    margin: 0 0 8px;
+    font-size: 11px;
+    line-height: 1.5;
+    color: #50575e;
+}
+
+#itp-pro-ai-faq-metabox-root .itp-faq-summary-meta strong {
+    color: #1d2327;
+    font-weight: 600;
+}
+
+#itp-pro-ai-faq-metabox-root .itp-faq-summary-count {
+    margin: 0 0 6px;
+    font-weight: 600;
+    color: #1d2327;
+}
+
+#itp-pro-ai-faq-metabox-root .itp-faq-summary-list {
+    margin: 0;
+    padding-left: 20px;
+    font-size: 12px;
+    color: #2c3338;
+}
+
+#itp-pro-ai-faq-metabox-root .itp-faq-summary-list li {
+    margin-bottom: 4px;
+    line-height: 1.4;
+}
+
+#itp-pro-ai-faq-metabox-root .itp-faq-result-actions {
+    margin-top: 10px;
+    text-align: right;
+}

@@ -110,15 +110,15 @@ $active_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'dashboa
     <?php return; ?>
     <?php endif; ?>
 
+    
     <h1>IntentTarget - Core Management Suite</h1>
     
     <nav class="nav-tab-wrapper">
         <a href="?page=itp-search-dashboard&tab=keyword_scanner" class="nav-tab <?php echo ($active_tab === 'keyword_scanner') ? 'nav-tab-active' : ''; ?>">Scanner & Dictionary</a>
         <a href="?page=itp-search-dashboard&tab=popout_adverts" class="nav-tab <?php echo ($active_tab === 'popout_adverts') ? 'nav-tab-active' : ''; ?>">Dynamic Adverts</a>
         <a href="?page=itp-search-dashboard&tab=dashboard" class="nav-tab <?php echo ($active_tab === 'dashboard') ? 'nav-tab-active' : ''; ?>">Dashboard & Search Log</a>
-        <a href="?page=itp-search-dashboard&tab=access_control" class="nav-tab <?php echo ($active_tab === 'access_control') ? 'nav-tab-active' : ''; ?>">Access Control</a>
         <?php 
-        // Allow Pro add-ons to inject their own tabs here
+        // Allow Pro add-ons (Access Control, Advert Styling, ROI Analytics, etc.) to inject their own tabs here
         do_action( 'itp_core_dashboard_tabs', $active_tab ); 
         ?>
     </nav>
@@ -509,46 +509,9 @@ $active_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'dashboa
 
     <?php 
     // =========================================================================
-    // TAB 4: ACCESS CONFIGURATION
+    // FALLBACK: dispatch the active tab to any registered Pro/add-on renderer
+    // (Access Control, Advert Styling, ROI Analytics, etc. all hook in this way).
     // =========================================================================
-    elseif ( $active_tab === 'access_control' ) : 
-        if ( function_exists('lee_dev_render_access_control_tab_content_9281') ) {
-            lee_dev_render_access_control_tab_content_9281();
-        } else {
-            // Decoupled Access Rendering Logic directly inside the view
-            $wp_roles = wp_roles()->get_names();
-            $allowed_roles = get_option( 'itp_allowed_tracking_roles', array() );
-            
-            if ( isset( $_GET['settings-updated'] ) && $_GET['settings-updated'] === 'true' ) {
-                echo '<div class="updated notice is-dismissible" style="margin: 15px 0 0 0;"><p>Access configurations updated.</p></div>';
-            }
-            ?>
-            <div style="background: #fff; padding: 25px; margin-top: 15px; border: 1px solid #ccd0d4; border-radius: 4px; max-width: 650px;">
-                <h3 style="margin-top:0;">Authorised Tracking User Roles</h3>
-                <p class="description" style="margin-bottom: 25px;">Tick which local site user roles will activate the broader analytics engine execution.</p>
-                
-                <form method="post" action="">
-                    <?php wp_nonce_field( 'itp_save_access_settings_nonce' ); ?>
-                    <table class="form-table" style="margin-bottom: 20px;">
-                        <tr>
-                            <td style="padding:0;">
-                                <?php foreach ( $wp_roles as $role_slug => $role_name ) : ?>
-                                    <div style="margin-bottom: 14px;">
-                                        <label style="font-size:14px; display:inline-flex; align-items:center; cursor:pointer;">
-                                            <input type="checkbox" name="itp_roles[]" value="<?php echo esc_attr( $role_slug ); ?>" <?php checked( in_array( $role_slug, $allowed_roles, true ) ); ?> style="margin-right:10px;" />
-                                            <?php echo esc_html( $role_name ); ?> 
-                                        </label>
-                                    </div>
-                                <?php endforeach; ?>
-                            </td>
-                        </tr>
-                    </table>
-                    <p class="submit" style="margin: 0;"><input type="submit" name="itp_save_access_settings" class="button button-primary button-large" value="Update Roles" /></p>
-                </form>
-            </div>
-            <?php
-        }
-
     else : 
         do_action( 'itp_core_dashboard_tab_content_' . $active_tab );
     endif; 

@@ -23,6 +23,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 // 0a. LOAD PRO MODULES
 // =========================================================================
 require_once plugin_dir_path( __FILE__ ) . 'includes/class-lee-dev-pro-roi-tracking.php';
+require_once plugin_dir_path( __FILE__ ) . 'includes/class-lee-dev-pro-access-control.php';
+require_once plugin_dir_path( __FILE__ ) . 'includes/class-lee-dev-pro-ai-faq.php';
 
 // =========================================================================
 // 0. PRO PLUGIN CONSTANTS
@@ -436,6 +438,17 @@ function lee_dev_pro_process_licence_activation_8167() {
             lee_dev_pro_redirect_to_design_tab_3187( 'invalid' );
         }
     } elseif ( $action === 'deactivate' ) {
+        // Ping Master Hub to release the Pro licence remotely.
+        $pro_key = get_option( 'lee_dev_pro_licence_key', '' );
+        if ( ! empty( $pro_key ) ) {
+            $endpoint = apply_filters( 'lee_dev_pro_licence_release_endpoint', 'https://intenttargetpro.com/wp-json/intenttarget/v1/release' );
+            wp_remote_post( $endpoint, array(
+                'timeout'  => 10,
+                'blocking' => false,
+                'body'     => array( 'licence_code' => $pro_key ),
+            ) );
+        }
+
         delete_option( 'lee_dev_pro_licence_key' );
         update_option( 'lee_dev_pro_licence_status', 'unauthorised' );
         if ( function_exists( 'lee_dev_debug_log_event_6158' ) ) {

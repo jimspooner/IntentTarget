@@ -144,6 +144,19 @@ function lee_dev_process_licence_activation_4812() {
             exit;
         }
     } elseif ( $action === 'deactivate' ) {
+        // Ping Master Hub to release the Core licence remotely.
+        $core_key = get_option( 'lee_dev_licence_key', '' );
+        if ( ! empty( $core_key ) ) {
+            $release_endpoint = apply_filters( 'lee_dev_telemetry_endpoint_3821', 'https://telemetry.intenttargetpro.com/ping' );
+            // Wait, we need to send to the correct release endpoint:
+            $endpoint = apply_filters( 'lee_dev_licence_release_endpoint', 'https://intenttargetpro.com/wp-json/intenttarget/v1/release' );
+            wp_remote_post( $endpoint, array(
+                'timeout'  => 10,
+                'blocking' => false,
+                'body'     => array( 'licence_code' => $core_key ),
+            ) );
+        }
+
         delete_option( 'lee_dev_licence_key' );
         update_option( 'lee_dev_licence_status', 'unauthorised' );
         lee_dev_debug_log_event_6158( 'licence.deactivated' );

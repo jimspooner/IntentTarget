@@ -19,14 +19,13 @@ function lee_dev_is_ready_8293() {
         return true;
     }
 
-    $allowed_roles = get_option( 'itp_allowed_tracking_roles', array() );
-    if ( empty( $allowed_roles ) ) return false;
-
-    foreach ( $current_user->roles as $role ) {
-        if ( in_array( $role, $allowed_roles, true ) ) return true;
-    }
-
-    return false;
+    /**
+     * Role-based gating is owned by the IntentTarget Pro add-on. With no listener attached the
+     * filter returns the default (true), meaning every authorised logged-in user passes the
+     * readiness check. When IntentTarget Pro is active it hooks this filter and restricts the
+     * answer to the admin-configured `itp_allowed_tracking_roles` list.
+     */
+    return (bool) apply_filters( 'lee_dev_is_ready_role_gate_5821', true, $current_user );
 }
 
 function lee_dev_has_authorised_licence_7365() {
@@ -106,19 +105,4 @@ function lee_dev_process_debug_logging_toggle_2846() {
     exit;
 }
 
-add_action( 'admin_init', 'lee_dev_process_access_settings_submission_5821' );
-function lee_dev_process_access_settings_submission_5821() {
-    if ( isset( $_POST['itp_save_access_settings'] ) ) {
-        check_admin_referer( 'itp_save_access_settings_nonce' );
-        if ( ! current_user_can( 'manage_options' ) ) wp_die( 'Insufficient permissions.' );
 
-        $selected_roles = isset( $_POST['itp_roles'] ) && is_array( $_POST['itp_roles'] ) 
-            ? array_map( 'sanitize_text_field', $_POST['itp_roles'] ) 
-            : array();
-            
-        update_option( 'itp_allowed_tracking_roles', $selected_roles );
-        lee_dev_debug_log_event_6158( 'access.roles.updated', array( 'roles' => $selected_roles ) );
-        wp_safe_redirect( add_query_arg( array( 'page' => 'itp-search-dashboard', 'tab' => 'access_control', 'settings-updated' => 'true' ), admin_url( 'admin.php' ) ) );
-        exit;
-    }
-}
