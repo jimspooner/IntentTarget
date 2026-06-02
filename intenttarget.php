@@ -17,191 +17,221 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit; // Exit if accessed directly
 }
 
-// function lee_dev_initialise_plugin_autoloader_4827( $class_name ) {
-//     if ( strpos( $class_name, 'Lee_Dev_' ) === false ) {
-//         return;
-//     }
-
-//     $file_name = 'class-' . strtolower( str_replace( '_', '-', $class_name ) ) . '.php';
-//     $base_path = plugin_dir_path( __FILE__ );
-//     $directories = array(
-//         'core/',
-//         'admin/',
-//         'telemetry/',
-//     );
-
-//     foreach ( $directories as $directory ) {
-//         $file_path = $base_path . $directory . $file_name;
-//         if ( file_exists( $file_path ) ) {
-//             require_once $file_path;
-//             return;
-//         }
-//     }
-// }
-// spl_autoload_register( 'lee_dev_initialise_plugin_autoloader_4827' );
-
-
-// 1. SAFE LOAD DECOUPLED COMPONENT SYSTEM
-// Define your base path once
-define( 'LEE_DEV_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
-
-// 1. ALWAYS LOAD
-require_once LEE_DEV_PLUGIN_DIR . 'core/class-lee-dev-transient.php';
-require_once LEE_DEV_PLUGIN_DIR . 'core/class-lee-dev-access.php';
-require_once LEE_DEV_PLUGIN_DIR . 'core/class-lee-dev-intents.php';
-require_once LEE_DEV_PLUGIN_DIR . 'core/class-lee-dev-parser.php';
-require_once LEE_DEV_PLUGIN_DIR . 'core/class-lee-dev-cron.php';
-require_once LEE_DEV_PLUGIN_DIR . 'core/class-lee-dev-hooks.php';
-require_once LEE_DEV_PLUGIN_DIR . 'core/class-lee-dev-propensity.php';
-
-// 2. ONLY LOAD IN ADMIN DASHBOARD
-if ( is_admin() ) {
-    require_once LEE_DEV_PLUGIN_DIR . 'admin/class-lee-dev-menu.php';
-    require_once LEE_DEV_PLUGIN_DIR . 'admin/view-sidebar-box.php';
-    require_once LEE_DEV_PLUGIN_DIR . 'admin/class-lee-dev-feedback.php';
-}
-
-// 3. ONLY LOAD DURING TRACKING/AJAX
-if ( wp_doing_ajax() ) {
-    require_once LEE_DEV_PLUGIN_DIR . 'telemetry/class-lee-dev-ajax.php';
-}
-require_once LEE_DEV_PLUGIN_DIR . 'telemetry/class-lee-dev-advertising.php';
-require_once LEE_DEV_PLUGIN_DIR . 'telemetry/class-lee-dev-tracker.php';
-
-if ( function_exists( 'lee_dev_debug_log_event_6158' ) ) {
-    lee_dev_debug_log_event_6158( 'bootstrap.loaded', array(
-        'licence_status' => get_option( 'lee_dev_licence_status', 'unauthorised' ),
-        'admin_area'     => is_admin() ? 'yes' : 'no',
-    ) );
-}
-
-if ( ! defined( 'LEE_DEV_PLUGIN_URL' ) ) {
-    define( 'LEE_DEV_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
-}
-if ( ! defined( 'LEE_DEV_FRONTEND_UI_VERSION' ) ) {
-    $ui_js_path = LEE_DEV_PLUGIN_DIR . 'assets/js/itp-frontend-ui.js';
-    $ui_version = file_exists( $ui_js_path ) ? (string) filemtime( $ui_js_path ) : '1.0.0';
-    define( 'LEE_DEV_FRONTEND_UI_VERSION', $ui_version );
-}
-
 // =========================================================================
-// CACHE-SAFE FRONT-END RUNTIME ENQUEUE
+// 0. CLASS AUTOLOADER
 // =========================================================================
-// Loads assets/js/itp-frontend-ui.js which hydrates every per-visitor surface (slide-in popup,
-// My Account dashboard advert, search-feedback form, preferences nonce, Pro ROI click tracker)
-// from the bootstrap REST endpoint at runtime. The inline localised payload contains only the
-// REST URL and the admin-ajax URL — both site-wide constants and therefore cache-safe.
-add_action( 'wp_enqueue_scripts', 'lee_dev_enqueue_frontend_ui_runtime_4920' );
-function lee_dev_enqueue_frontend_ui_runtime_4920() {
-    if ( ! function_exists( 'lee_dev_has_authorised_licence_7365' ) || ! lee_dev_has_authorised_licence_7365() ) {
+spl_autoload_register( function ( $class_name ) {
+    $prefix = 'IntentTarget\\';
+    $len    = strlen( $prefix );
+
+    if ( strncmp( $prefix, $class_name, $len ) !== 0 ) {
         return;
     }
 
-    $handle = 'itp-frontend-ui';
-    wp_register_script(
-        $handle,
-        LEE_DEV_PLUGIN_URL . 'assets/js/itp-frontend-ui.js',
-        array(),
-        LEE_DEV_FRONTEND_UI_VERSION,
-        true
-    );
-    wp_localize_script( $handle, 'itpFrontendBootstrap', array(
-        'restUrl' => esc_url_raw( rest_url( 'intenttarget/v1/bootstrap' ) ),
-        'ajaxUrl' => esc_url_raw( admin_url( 'admin-ajax.php' ) ),
-        'version' => LEE_DEV_FRONTEND_UI_VERSION,
-    ) );
-    wp_enqueue_script( $handle );
-}
+    $relative = substr( $class_name, $len );
+    $relative = ltrim( $relative, '\\' );
+    $parts    = explode( '\\', $relative );
+    $class    = array_pop( $parts );
+    $dir      = implode( '/', $parts );
 
-// Ask third-party optimisers to leave the runtime script tag alone. The most common offenders
-// (Cloudflare Rocket Loader, WP Rocket Combine/Delay JS, Autoptimize, LiteSpeed Cache JS Combine)
-// all respect at least one of these attributes.
-add_filter( 'script_loader_tag', 'lee_dev_protect_frontend_ui_runtime_tag_4920', 10, 3 );
-function lee_dev_protect_frontend_ui_runtime_tag_4920( $tag, $handle, $src ) {
-    if ( $handle !== 'itp-frontend-ui' ) {
-        return $tag;
+    // Flatten sub-namespace directories to match file layout.
+    $dir = str_replace( 'Core/Admin', 'Admin', $dir );
+    $dir = str_replace( 'Core/Telemetry', 'Telemetry', $dir );
+
+    $file = 'class-' . strtolower( $class ) . '.php';
+    $path = plugin_dir_path( __FILE__ ) . 'includes/' . ( $dir ? $dir . '/' : '' ) . $file;
+
+    if ( file_exists( $path ) ) {
+        require_once $path;
     }
-    if ( strpos( $tag, 'data-no-optimize' ) !== false ) {
-        return $tag;
-    }
-    return str_replace(
-        '<script ',
-        '<script data-no-optimize="1" data-no-defer="1" data-no-minify="1" data-cfasync="false" ',
-        $tag
-    );
-}
+} );
 
 // =========================================================================
-// 2. SHORTCODES REGISTER BOOTSTRAP
+// 1. BOOTSTRAP THE OOP PLUGIN
 // =========================================================================
-add_shortcode('itp_preferences_dashboard', 'lee_dev_preferences_shortcode_6382');
-add_shortcode('itp_user_preferences', 'lee_dev_preferences_shortcode_6382');
-
-// =========================================================================
-// 3. WOOCOMMERCE MY INTERESTS TAB INTEGRATION
-// =========================================================================
-add_action( 'plugins_loaded', 'lee_dev_init_wc_integration_1032' );
-function lee_dev_init_wc_integration_1032() {
-    if ( class_exists( 'WooCommerce' ) ) {
-        add_filter('woocommerce_account_menu_items', 'lee_dev_add_wc_interests_menu_item_6472');
-        add_action('init', 'lee_dev_add_wc_interests_endpoint_7584');
-        add_action('woocommerce_account_interests_endpoint', 'lee_dev_render_wc_interests_tab_2947');
-    }
-}
-
-if ( ! function_exists( 'lee_dev_add_wc_interests_menu_item_6472' ) ) {
-    function lee_dev_add_wc_interests_menu_item_6472($items) {
-        if (!function_exists('lee_dev_is_ready_8293') || !lee_dev_is_ready_8293()) return $items;
-        
-        $new_items = array();
-        foreach ($items as $key => $item) {
-            if ($key === 'customer-logout') {
-                $new_items['interests'] = __('My Interests', 'intenttarget-pro');
-            }
-            $new_items[$key] = $item;
-        }
-        return $new_items;
-    }
-}
-
-if ( ! function_exists( 'lee_dev_add_wc_interests_endpoint_7584' ) ) {
-    function lee_dev_add_wc_interests_endpoint_7584() {
-        add_rewrite_endpoint('interests', EP_PAGES);
-    }
-}
-
-if ( ! function_exists( 'lee_dev_render_wc_interests_tab_2947' ) ) {
-    function lee_dev_render_wc_interests_tab_2947() {
-        if ( shortcode_exists( 'itp_preferences_dashboard' ) ) {
-            echo do_shortcode('[itp_preferences_dashboard]');
-        } elseif ( shortcode_exists( 'itp_user_preferences' ) ) {
-            echo do_shortcode('[itp_user_preferences]');
-        }
-    }
-}
+$intenttarget_plugin = \IntentTarget\Core\Plugin::instance( __FILE__ );
 
 // =========================================================================
-// 4. PLUGIN ACTIVATION AND DEACTIVATION HANDLERS
+// 2. PLUGIN ACTIVATION / DEACTIVATION
 // =========================================================================
-register_activation_hook(__FILE__, 'lee_dev_activate_plugin_9481');
-function lee_dev_activate_plugin_9481() {
-    if ( function_exists('lee_dev_setup_search_insights_table_9301') ) {
-        lee_dev_setup_search_insights_table_9301();
-    }
-    
-    // Schedule background cron batch job hourly
-    if ( ! wp_next_scheduled( 'lee_dev_cron_batch_scan_event_9201' ) ) {
-        wp_schedule_event( time(), 'hourly', 'lee_dev_cron_batch_scan_event_9201' );
-    }
+register_activation_hook( __FILE__, array( '\IntentTarget\Core\Plugin', 'activate' ) );
+register_deactivation_hook( __FILE__, array( '\IntentTarget\Core\Plugin', 'deactivate' ) );
 
-    // Schedule background telemetry job hourly
-    if ( ! wp_next_scheduled( 'itp_hourly_tracking_batch_event' ) ) {
-        wp_schedule_event( time(), 'hourly', 'itp_hourly_tracking_batch_event' );
+// =========================================================================
+// 3. BACKWARD-COMPATIBILITY WRAPPERS (procedural => OOP)
+// =========================================================================
+if ( ! function_exists( 'lee_dev_has_authorised_licence_7365' ) ) {
+    function lee_dev_has_authorised_licence_7365() {
+        return \IntentTarget\Core\Access::has_authorised_licence();
     }
 }
-
-register_deactivation_hook(__FILE__, 'lee_dev_deactivate_plugin_3821');
-function lee_dev_deactivate_plugin_3821() {
-    wp_clear_scheduled_hook( 'lee_dev_cron_batch_scan_event_9201' );
-    wp_clear_scheduled_hook( 'itp_hourly_tracking_batch_event' );
+if ( ! function_exists( 'lee_dev_is_ready_8293' ) ) {
+    function lee_dev_is_ready_8293() {
+        return \IntentTarget\Core\Access::is_ready();
+    }
+}
+if ( ! function_exists( 'lee_dev_is_addon_active_3812' ) ) {
+    function lee_dev_is_addon_active_3812( $slug ) {
+        return \IntentTarget\Core\Access::is_addon_active( $slug );
+    }
+}
+if ( ! function_exists( 'lee_dev_debug_log_event_6158' ) ) {
+    function lee_dev_debug_log_event_6158( $event_name, $context = array() ) {
+        \IntentTarget\Core\Access::debug_log_event( $event_name, $context );
+    }
+}
+if ( ! function_exists( 'lee_dev_get_intent_categories_3812' ) ) {
+    function lee_dev_get_intent_categories_3812() {
+        return \IntentTarget\Core\Intents::get_categories();
+    }
+}
+if ( ! function_exists( 'lee_dev_get_intent_signal_lexicon_4275' ) ) {
+    function lee_dev_get_intent_signal_lexicon_4275() {
+        return \IntentTarget\Core\Intents::get_signal_lexicon();
+    }
+}
+if ( ! function_exists( 'lee_dev_classify_phrase_into_intent_8264' ) ) {
+    function lee_dev_classify_phrase_into_intent_8264( $phrase ) {
+        return \IntentTarget\Core\Intents::classify_phrase( $phrase );
+    }
+}
+if ( ! function_exists( 'lee_dev_get_intent_scanner_blacklist_9447' ) ) {
+    function lee_dev_get_intent_scanner_blacklist_9447() {
+        return \IntentTarget\Core\Intents::get_scanner_blacklist();
+    }
+}
+if ( ! function_exists( 'lee_dev_normalise_intent_text_2754' ) ) {
+    function lee_dev_normalise_intent_text_2754( $raw ) {
+        return \IntentTarget\Core\Intents::normalise_text( $raw );
+    }
+}
+if ( ! function_exists( 'lee_dev_get_max_phrase_word_count_5174' ) ) {
+    function lee_dev_get_max_phrase_word_count_5174() {
+        return \IntentTarget\Core\Intents::get_max_phrase_word_count();
+    }
+}
+if ( ! function_exists( 'lee_dev_extract_candidate_phrases_from_text_7506' ) ) {
+    function lee_dev_extract_candidate_phrases_from_text_7506( $raw, $blacklist = array() ) {
+        return \IntentTarget\Core\Intents::extract_candidate_phrases( $raw, $blacklist );
+    }
+}
+if ( ! function_exists( 'lee_dev_collect_asset_taxonomy_phrases_5912' ) ) {
+    function lee_dev_collect_asset_taxonomy_phrases_5912( $post_id, $post_type ) {
+        return \IntentTarget\Core\Intents::collect_taxonomy_phrases( $post_id, $post_type );
+    }
+}
+if ( ! function_exists( 'lee_dev_collect_asset_public_meta_phrases_8137' ) ) {
+    function lee_dev_collect_asset_public_meta_phrases_8137( $post_id ) {
+        return \IntentTarget\Core\Intents::collect_public_meta_phrases( $post_id );
+    }
+}
+if ( ! function_exists( 'lee_dev_build_asset_search_corpus_4216' ) ) {
+    function lee_dev_build_asset_search_corpus_4216( $post ) {
+        return \IntentTarget\Core\Intents::build_asset_search_corpus( $post );
+    }
+}
+if ( ! function_exists( 'lee_dev_get_intent_to_site_purpose_map_5614' ) ) {
+    function lee_dev_get_intent_to_site_purpose_map_5614() {
+        return \IntentTarget\Core\Intents::get_intent_to_site_purpose_map();
+    }
+}
+if ( ! function_exists( 'lee_dev_resolve_user_intent_priority_4762' ) ) {
+    function lee_dev_resolve_user_intent_priority_4762( $user_id ) {
+        return \IntentTarget\Core\Intents::resolve_user_intent_priority( $user_id );
+    }
+}
+if ( ! function_exists( 'lee_dev_get_manual_label_overrides_4861' ) ) {
+    function lee_dev_get_manual_label_overrides_4861( $post_id ) {
+        return \IntentTarget\Core\Intents::get_manual_label_overrides( $post_id );
+    }
+}
+if ( ! function_exists( 'lee_dev_save_manual_label_overrides_4861' ) ) {
+    function lee_dev_save_manual_label_overrides_4861( $post_id, $overrides ) {
+        \IntentTarget\Core\Intents::save_manual_label_overrides( $post_id, $overrides );
+    }
+}
+if ( ! function_exists( 'lee_dev_apply_manual_label_overrides_2937' ) ) {
+    function lee_dev_apply_manual_label_overrides_2937( $scanner_labels, $post_id ) {
+        return \IntentTarget\Core\Intents::apply_manual_label_overrides( $scanner_labels, $post_id );
+    }
+}
+if ( ! function_exists( 'lee_dev_bucket_candidates_into_intents_6024' ) ) {
+    function lee_dev_bucket_candidates_into_intents_6024( $candidates ) {
+        return \IntentTarget\Core\Intents::bucket_candidates( $candidates );
+    }
+}
+if ( ! function_exists( 'lee_dev_sanitise_manual_label_phrase_6749' ) ) {
+    function lee_dev_sanitise_manual_label_phrase_6749( $raw ) {
+        return \IntentTarget\Core\Intents::sanitise_manual_label_phrase( $raw );
+    }
+}
+if ( ! function_exists( 'lee_dev_get_active_categories_5921' ) ) {
+    function lee_dev_get_active_categories_5921() {
+        return \IntentTarget\Core\Parser::get_active_categories();
+    }
+}
+if ( ! function_exists( 'lee_dev_execute_combined_content_scan_1289' ) ) {
+    function lee_dev_execute_combined_content_scan_1289( $post_id, $post ) {
+        \IntentTarget\Core\Parser::execute_combined_content_scan( $post_id, $post );
+    }
+}
+if ( ! function_exists( 'lee_dev_calculate_group_propensity_1289' ) ) {
+    function lee_dev_calculate_group_propensity_1289( $group_key, $user_id ) {
+        return \IntentTarget\Core\Propensity::calculate_group_propensity( $group_key, $user_id );
+    }
+}
+if ( ! function_exists( 'lee_dev_get_global_priority_order_7136' ) ) {
+    function lee_dev_get_global_priority_order_7136() {
+        return \IntentTarget\Core\Propensity::get_global_priority_order();
+    }
+}
+if ( ! function_exists( 'lee_dev_get_valid_site_intents_6048' ) ) {
+    function lee_dev_get_valid_site_intents_6048() {
+        return \IntentTarget\Core\Propensity::get_valid_site_intents();
+    }
+}
+if ( ! function_exists( 'lee_dev_run_background_cron_batch_scan_9201' ) ) {
+    function lee_dev_run_background_cron_batch_scan_9201() {
+        \IntentTarget\Core\Cron::run_batch_scan();
+    }
+}
+if ( ! function_exists( 'lee_dev_normalise_content_body_4837' ) ) {
+    function lee_dev_normalise_content_body_4837( $raw_content ) {
+        return \IntentTarget\Core\Cron::normalise_content_body( $raw_content );
+    }
+}
+if ( ! function_exists( 'lee_dev_build_keyword_group_matrix_6249' ) ) {
+    function lee_dev_build_keyword_group_matrix_6249() {
+        return \IntentTarget\Core\Cron::build_keyword_group_matrix();
+    }
+}
+if ( ! function_exists( 'lee_dev_run_hourly_content_keyword_scan_7394' ) ) {
+    function lee_dev_run_hourly_content_keyword_scan_7394() {
+        \IntentTarget\Core\Cron::run_hourly_keyword_scan();
+    }
+}
+if ( ! function_exists( 'lee_dev_setup_search_insights_table_9301' ) ) {
+    function lee_dev_setup_search_insights_table_9301() {
+        \IntentTarget\Core\Hooks::setup_search_insights_table();
+    }
+}
+if ( ! function_exists( 'lee_dev_enqueue_custom_styles_4921' ) ) {
+    function lee_dev_enqueue_custom_styles_4921() {
+        \IntentTarget\Core\Hooks::enqueue_custom_styles();
+    }
+}
+if ( ! function_exists( 'lee_dev_inject_customiser_css_overrides_5174' ) ) {
+    function lee_dev_inject_customiser_css_overrides_5174() {
+        \IntentTarget\Core\Hooks::inject_customiser_css_overrides();
+    }
+}
+if ( ! function_exists( 'lee_dev_boost_interests_on_purchase_2718' ) ) {
+    function lee_dev_boost_interests_on_purchase_2718( $order_id ) {
+        \IntentTarget\Core\Hooks::boost_interests_on_purchase( $order_id );
+    }
+}
+if ( ! function_exists( 'lee_dev_intercept_search_requests_3958' ) ) {
+    function lee_dev_intercept_search_requests_3958() {
+        \IntentTarget\Core\Hooks::intercept_search_requests();
+    }
 }

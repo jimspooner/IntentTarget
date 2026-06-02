@@ -122,13 +122,13 @@ All per-visitor surfaces (popup, dashboard tiles, preferences nonce, ROI click t
 
 ```
 IntentTarget/
-├── intenttarget.php                    # Core plugin bootstrap, shortcodes, WC integration
+├── intenttarget.php                    # Core plugin bootstrap, autoloader, procedural wrappers
 ├── readme.txt                          # WordPress.org readme
 ├── README.md                           # This file
 ├── custom-interests.css                # Frontend interest-selection styles
 ├── admin/
-│   ├── class-lee-dev-menu.php          # Dashboard menu registration and tab routing
-│   ├── class-lee-dev-feedback.php      # Deactivation feedback modal (Core + Pro UI)
+│   ├── class-lee-dev-menu.php          # Dashboard menu registration and tab routing (legacy)
+│   ├── class-lee-dev-feedback.php      # Deactivation feedback modal (legacy)
 │   ├── view-dashboard.php              # Main dashboard view (adverts, analytics, settings)
 │   └── view-sidebar-box.php            # Post editor sidebar box for per-post controls
 ├── assets/
@@ -137,29 +137,40 @@ IntentTarget/
 │   │   └── itp-pro-ai-faq-admin.js     # Pro AI FAQ metabox controller
 │   └── css/
 │       └── itp-pro-ai-faq-admin.css    # Pro AI FAQ metabox styling
-├── core/
-│   ├── class-lee-dev-access.php        # Access control, readiness checks, cache-purge helper
-│   ├── class-lee-dev-cron.php          # Background batch scan engine
-│   ├── class-lee-dev-hooks.php         # Frontend hook registration
-│   ├── class-lee-dev-intents.php       # Intent categories, lexicon, and classification
-│   ├── class-lee-dev-parser.php        # Content normalisation and keyphrase extraction
-│   ├── class-lee-dev-propensity.php    # Propensity scoring algorithm
-│   └── class-lee-dev-transient.php     # Temporary data helpers
-├── telemetry/
-│   ├── class-lee-dev-advertising.php   # Advert rendering, popup, banner, dashboard tiles
-│   ├── class-lee-dev-ajax.php          # Public AJAX handlers (engagement, search feedback)
-│   └── class-lee-dev-tracker.php       # Core licence activation, deactivation, daily verification
+├── core/                               # Legacy procedural modules (loaded by OOP stubs)
+│   ├── class-lee-dev-access.php
+│   ├── class-lee-dev-cron.php
+│   ├── class-lee-dev-hooks.php
+│   ├── class-lee-dev-intents.php
+│   ├── class-lee-dev-parser.php
+│   ├── class-lee-dev-propensity.php
+│   └── class-lee-dev-transient.php
+├── includes/                           # OOP classes (PSR-4 style autoloaded)
+│   ├── Admin/
+│   │   ├── class-menu.php              # Stub: loads legacy menu, registers admin hooks
+│   │   ├── class-sidebar.php           # Stub: loads legacy sidebar box
+│   │   └── class-feedback.php          # Stub: loads legacy feedback modal
+│   ├── Core/
+│   │   └── class-intents.php           # Intent categories, lexicon, normalisation
+│   └── Telemetry/
+│       ├── class-advertising.php       # Stub: loads legacy advertising
+│       ├── class-ajax.php              # Stub: loads legacy AJAX handlers
+│       └── class-tracker.php           # Stub: loads legacy tracker
+├── telemetry/                          # Legacy procedural modules
+│   ├── class-lee-dev-advertising.php
+│   ├── class-lee-dev-ajax.php
+│   └── class-lee-dev-tracker.php
 ├── telemetry-master/
 │   └── (telemetry master stubs)
 ├── master-server-hub/
-│   ├── intenttarget-master-hub.php     # Standalone Master Hub licence server (REST API, admin UI, db schema)
-│   └── class-intenttarget-cron.php     # Daily cron for licence expiration checks
-└── IntentTarget-Pro/                 # Pro add-on source (mirrored to top-level plugin)
-    ├── intenttarget-pro.php          # Pro bootstrap, licence activation, styling tab
+│   ├── intenttarget-master-hub.php     # Standalone Master Hub licence server
+│   └── class-intenttarget-cron.php
+└── IntentTarget-Pro/                   # Pro add-on source (mirrored to top-level plugin)
+    ├── intenttarget-pro.php            # Pro bootstrap, autoloader, procedural wrappers
     └── includes/
-        ├── class-lee-dev-pro-roi-tracking.php    # ROI attribution table and click tracking
-        ├── class-lee-dev-pro-access-control.php  # Role-based access control tab
-        └── class-lee-dev-pro-ai-faq.php          # AI FAQ generator (WP 7.0 AI Client)
+        ├── class-lee-dev-pro-roi-tracking.php
+        ├── class-lee-dev-pro-access-control.php
+        └── class-lee-dev-pro-ai-faq.php
 
 IntentTarget-Pro/                     # Top-level Pro plugin (loaded by WordPress)
 ├── intenttarget-pro.php
@@ -185,6 +196,26 @@ IntentTarget-Pro/                     # Top-level Pro plugin (loaded by WordPres
 - PHP 8.0 or higher
 - WooCommerce (optional — adds sales intent, My Interests tab, and dashboard surfaces)
 - WordPress 7.0 or higher (required for Pro AI FAQ Generator)
+- **HTTPS** (required for Pro AI FAQ Generator — outbound calls to Google/Anthropic/OpenAI APIs fail on plain HTTP or sandboxed local environments)
+
+---
+
+## Architecture
+
+### OOP Refactor (v2.0)
+
+The plugin suite has been refactored from purely procedural code to an object-oriented architecture using PHP namespaces and PSR-4 style autoloading:
+
+- **Core namespace:** `IntentTarget\Core\` (intents, normalisation, scoring)
+- **Admin namespace:** `IntentTarget\Core\Admin\` (menu, sidebar, feedback stubs)
+- **Telemetry namespace:** `IntentTarget\Core\Telemetry\` (advertising, AJAX, tracker stubs)
+- **Pro namespace:** `IntentTarget\Pro\` (licence, styling, plugin bootstrap)
+
+Each main plugin file registers an `spl_autoload_register` handler that maps namespaces to `includes/<Namespace>/class-<lowercase>.php` files. Legacy procedural files under `admin/`, `core/`, and `telemetry/` are loaded immediately by their OOP stub classes during `init()` so all `add_action` calls register in time.
+
+### Backward-Compatible Wrappers
+
+All legacy `lee_dev_` prefixed functions are preserved via `if ( ! function_exists( ... ) )` guards. These wrappers delegate to the new class static methods, ensuring existing hooks, themes, and third-party integrations continue to work without modification.
 
 ---
 
@@ -199,6 +230,38 @@ When a Pro licence is inactive, Pro UI tabs remain visible but are disabled with
 
 ---
 
+## Troubleshooting
+
+### AI FAQ Generator: `rest_cookie_invalid_nonce` or `403 Forbidden`
+
+The AI FAQ metabox uses `wp.apiFetch` to call the REST API. If you see `rest_cookie_invalid_nonce` or `403 Forbidden` errors:
+
+1. **Ensure the site runs over HTTPS.** The Google Gemini (and other provider) APIs require a secure origin. Local development environments that do not proxy through HTTPS will time out or fail with nonce errors because the REST API cannot establish a secure session.
+2. Hard-refresh the browser to refresh the `wp_rest` nonce.
+3. If the issue persists, check that the user has `edit_post` capability for the current post.
+
+### AI FAQ Generator: `cURL error 28: Operation timed out`
+
+If the API call times out after 30 seconds:
+
+1. Confirm your site is served over HTTPS (see above).
+2. Verify your Google / Anthropic / OpenAI API key is valid and the model name is correct in **Settings → Connectors**.
+3. Check that your hosting environment allows outbound HTTPS calls to `generativelanguage.googleapis.com` (or the relevant provider endpoint). Some local stacks (e.g., LocalWP) sandbox PHP network access.
+
+### Sidebar: "Keyphrase is empty or invalid"
+
+If adding a keyphrase in the post editor sidebar returns this error, the `normalise_text` function in `includes/Core/class-intents.php` may have failed. This was caused by an invalid PCRE regex (broken unicode escapes for curly quotes). The fix uses proper `\x{2019}` style escapes. Ensure your copy of `includes/Core/class-intents.php` contains the corrected regex.
+
+### Admin Menu Missing After Refactor
+
+If the "Interest Tracker" admin menu does not appear, the OOP stub class (`includes/Admin/class-menu.php`) may be loading the legacy file too late. The stub must `require_once` the legacy file inside `init()`, not inside the `admin_menu` hook, so legacy `add_action` calls register before WordPress fires the menu.
+
+### Pro Add-On Not Loading
+
+The Pro add-on must be present as a **top-level plugin** at `wp-content/plugins/IntentTarget-Pro/` (not nested inside `IntentTarget/`). The workspace copy at `IntentTarget/IntentTarget-Pro/` is the canonical source — mirror it to the top-level folder after every edit.
+
+---
+
 ## Privacy & Compliance
 
 - **No tracking for guests.** Only logged-in users with authorised roles are profiled.
@@ -209,6 +272,21 @@ When a Pro licence is inactive, Pro UI tabs remain visible but are disabled with
 ---
 
 ## Changelog
+
+### 2.0.0
+- **OOP Architecture Refactor**
+  - Converted all procedural plugin code to object-oriented classes with namespaces (`IntentTarget\Core\`, `IntentTarget\Core\Admin\`, `IntentTarget\Core\Telemetry\`, `IntentTarget\Pro\`).
+  - Implemented PSR-4 style autoloaders in both Core and Pro bootstrap files using `spl_autoload_register`.
+  - Created main `Plugin` bootstrap classes (singleton pattern) for Core and Pro.
+  - Added backward-compatible procedural wrappers with `if ( ! function_exists( ... ) )` guards, delegating to new class static methods.
+  - Legacy procedural files under `admin/`, `core/`, and `telemetry/` are loaded by OOP stub classes during `init()`.
+
+- **Bug Fixes**
+  - Fixed `rest_cookie_invalid_nonce` error on AI FAQ generation by explicitly passing the `wp_rest` nonce in the `apiFetch` header.
+  - Fixed admin menu not appearing after refactor by loading the legacy menu file immediately in `Menu::init()` instead of deferring to `admin_menu` hook.
+  - Fixed "Keyphrase is empty or invalid" sidebar error caused by an invalid PCRE regex in `normalise_text()` (broken unicode escapes for curly quotes). Replaced with proper `\x{2019}` style escapes.
+  - Fixed function redeclaration fatal errors by adding `if ( ! function_exists( ... ) )` guards around all legacy `lee_dev_` functions in `admin/class-lee-dev-menu.php`.
+  - Fixed missing closing braces in `admin/class-lee-dev-menu.php` after adding conditional guards.
 
 ### 1.1.0
 - **Master Hub Licensing Overhaul**

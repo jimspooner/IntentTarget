@@ -5,6 +5,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 // 1. REGISTER THE UNIFIED DASHBOARD MENU
 // =========================================================================
 add_action('admin_menu', 'lee_dev_register_unified_search_dashboard_1120');
+if ( ! function_exists( 'lee_dev_register_unified_search_dashboard_1120' ) ) {
 function lee_dev_register_unified_search_dashboard_1120() {
     add_menu_page(
         'User Interest Tracker',
@@ -16,7 +17,9 @@ function lee_dev_register_unified_search_dashboard_1120() {
         56
     );
 }
+}
 
+if ( ! function_exists( 'lee_dev_render_unified_search_dashboard_4829' ) ) {
 function lee_dev_render_unified_search_dashboard_4829() {
     if ( ! current_user_can('manage_options') ) {
         wp_die('Insufficient access privileges.');
@@ -30,7 +33,9 @@ function lee_dev_render_unified_search_dashboard_4829() {
         include $view_path;
     }
 }
+}
 
+if ( ! function_exists( 'lee_dev_get_valid_site_intents_6048' ) ) {
 function lee_dev_get_valid_site_intents_6048() {
     $intents = array(
         'generating_leads'     => 'Generating Leads',
@@ -44,8 +49,10 @@ function lee_dev_get_valid_site_intents_6048() {
 
     return $intents;
 }
+}
 
 add_action( 'admin_init', 'lee_dev_process_global_priority_settings_6048' );
+if ( ! function_exists( 'lee_dev_process_global_priority_settings_6048' ) ) {
 function lee_dev_process_global_priority_settings_6048() {
     if ( ! isset( $_POST['itp_save_global_priority'] ) ) {
         return;
@@ -78,12 +85,14 @@ function lee_dev_process_global_priority_settings_6048() {
     wp_safe_redirect( add_query_arg( array( 'page' => 'itp-search-dashboard', 'tab' => 'popout_adverts', 'priority-updated' => 'true' ), admin_url( 'admin.php' ) ) );
     exit;
 }
+}
 
 // =========================================================================
 // 2. ADMIN USER PROFILE INSIGHTS INJECTION
 // =========================================================================
 add_action('edit_user_profile', 'lee_dev_admin_display_interests_1938');
 add_action('show_user_profile', 'lee_dev_admin_display_interests_1938');
+if ( ! function_exists( 'lee_dev_admin_display_interests_1938' ) ) {
 function lee_dev_admin_display_interests_1938($user) {
     if (!function_exists('lee_dev_is_ready_8293') || !lee_dev_is_ready_8293()) return;
 
@@ -166,15 +175,19 @@ function lee_dev_admin_display_interests_1938($user) {
     </div>
     <?php
 }
+}
 
 add_action('admin_footer-user-edit.php', 'lee_dev_reposition_profile_intelligence_panel_4721');
 add_action('admin_footer-profile.php', 'lee_dev_reposition_profile_intelligence_panel_4721');
+if ( ! function_exists( 'lee_dev_reposition_profile_intelligence_panel_4721' ) ) {
 function lee_dev_reposition_profile_intelligence_panel_4721() {
     ?><script>jQuery(document).ready(function($) { var p = $('.itp-intelligence-profile-wrapper'); if(p.length) p.insertAfter('.wrap h1:first'); });</script><?php
+}
 }
 
 add_action('show_user_profile', 'lee_dev_show_engagement_status_3847');
 add_action('edit_user_profile', 'lee_dev_show_engagement_status_3847');
+if ( ! function_exists( 'lee_dev_show_engagement_status_3847' ) ) {
 function lee_dev_show_engagement_status_3847($user) {
     $is_high_engaged = get_user_meta($user->ID, 'itp_high_engagement_flag', true);
     $last_interaction = get_user_meta($user->ID, 'itp_last_interaction_date', true);
@@ -190,17 +203,21 @@ function lee_dev_show_engagement_status_3847($user) {
     </table>
     <?php
 }
+}
 
 // =========================================================================
 // 3. CUSTOM LEAD COLUMNS FOR USER LIST
 // =========================================================================
 add_filter('manage_users_columns', 'lee_dev_add_lead_status_column_5829');
+if ( ! function_exists( 'lee_dev_add_lead_status_column_5829' ) ) {
 function lee_dev_add_lead_status_column_5829($columns) {
     $columns['itp_lead_status'] = 'Lead Status';
     return $columns;
 }
+}
 
 add_filter('manage_users_custom_column', 'lee_dev_fill_lead_status_column_2940', 10, 3);
+if ( ! function_exists( 'lee_dev_fill_lead_status_column_2940' ) ) {
 function lee_dev_fill_lead_status_column_2940($output, $column_name, $user_id) {
     if ($column_name !== 'itp_lead_status') return $output;
     $is_high_engaged = get_user_meta($user_id, 'itp_high_engagement_flag', true);
@@ -210,13 +227,17 @@ function lee_dev_fill_lead_status_column_2940($output, $column_name, $user_id) {
     if ($total_score >= 100) return '<span style="color: #fff; background: #f0ad4e; padding: 3px 8px; border-radius: 3px; font-weight: bold; font-size: 10px;">Warm Lead</span>';
     return '<span style="color: #777; background: #eee; padding: 3px 8px; border-radius: 3px; font-weight: bold; font-size: 10px;">Standard</span>';
 }
+}
 
 add_action('admin_head-users.php', 'lee_dev_style_user_table_columns_4812');
+if ( ! function_exists( 'lee_dev_style_user_table_columns_4812' ) ) {
 function lee_dev_style_user_table_columns_4812() {
     echo '<style>table.fixed { table-layout: auto !important; } .column-itp_lead_status { min-width: 150px !important; width: 150px; } .column-itp_lead_status span { display: inline-block; text-align: center; min-width: 100px; }</style>';
 }
+}
 
 add_action('restrict_manage_users', 'lee_dev_add_lead_status_filter_9381');
+if ( ! function_exists( 'lee_dev_add_lead_status_filter_9381' ) ) {
 function lee_dev_add_lead_status_filter_9381($which) {
     if ($which !== 'top') return;
     $selected = isset($_GET['itp_lead_filter']) ? $_GET['itp_lead_filter'] : '';
@@ -230,8 +251,10 @@ function lee_dev_add_lead_status_filter_9381($which) {
     <input type="submit" name="filter_action" class="button" value="Filter">
     <?php
 }
+}
 
 add_action('pre_get_users', 'lee_dev_filter_users_by_lead_status_3819');
+if ( ! function_exists( 'lee_dev_filter_users_by_lead_status_3819' ) ) {
 function lee_dev_filter_users_by_lead_status_3819($query) {
     if (!is_admin()) return;
     $filter_value = isset($_GET['itp_lead_filter']) ? $_GET['itp_lead_filter'] : '';
@@ -256,4 +279,5 @@ function lee_dev_filter_users_by_lead_status_3819($query) {
             )
         ));
     }
+}
 }
