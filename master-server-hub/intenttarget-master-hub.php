@@ -96,6 +96,7 @@ class Database {
             last_request_ip varchar(100) NOT NULL DEFAULT '',
             created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
             activated_at datetime DEFAULT NULL,
+            expires_at datetime DEFAULT NULL,
             deactivated_at datetime DEFAULT NULL,
             last_seen_at datetime DEFAULT NULL,
             feedback_reason varchar(100) DEFAULT NULL,
@@ -225,15 +226,17 @@ class Admin {
                         <th><?php echo esc_html__( 'Mapped Domain', 'intenttarget-pro' ); ?></th>
                         <th><?php echo esc_html__( 'Client URL', 'intenttarget-pro' ); ?></th>
                         <th><?php echo esc_html__( 'Status', 'intenttarget-pro' ); ?></th>
+                        <th><?php echo esc_html__( 'Expires', 'intenttarget-pro' ); ?></th>
                         <th><?php echo esc_html__( 'Activations', 'intenttarget-pro' ); ?></th>
                         <th><?php echo esc_html__( 'Last Seen', 'intenttarget-pro' ); ?></th>
+                        <th><?php echo esc_html__( 'Feedback', 'intenttarget-pro' ); ?></th>
                         <th><?php echo esc_html__( 'Action', 'intenttarget-pro' ); ?></th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if ( empty( $licences ) ) : ?>
                         <tr>
-                            <td colspan="9"><?php echo esc_html__( 'No licence activations have been logged yet.', 'intenttarget-pro' ); ?></td>
+                            <td colspan="10"><?php echo esc_html__( 'No licence activations have been logged yet.', 'intenttarget-pro' ); ?></td>
                         </tr>
                     <?php else : ?>
                         <?php foreach ( $licences as $licence ) :
@@ -247,8 +250,28 @@ class Admin {
                                 <td><?php echo esc_html( $licence->mapped_domain ); ?></td>
                                 <td><?php echo esc_html( $licence->client_url ); ?></td>
                                 <td><strong><?php echo esc_html( ucfirst( $licence->status ) ); ?></strong></td>
+                                <td>
+                                    <?php 
+                                        if ( ! empty( $licence->expires_at ) ) {
+                                            $is_expired = ( strtotime( $licence->expires_at ) < current_time( 'timestamp' ) );
+                                            echo '<span style="color:' . ( $is_expired ? '#d63638' : '#00a32a' ) . ';">' . esc_html( date( 'j M Y', strtotime( $licence->expires_at ) ) ) . '</span>';
+                                        } else {
+                                            echo '<span style="color:#a7aaad;">-</span>';
+                                        }
+                                    ?>
+                                </td>
                                 <td><?php echo esc_html( (string) $licence->activation_count ); ?></td>
                                 <td><?php echo esc_html( $licence->last_seen_at ?: 'Not recorded' ); ?></td>
+                                <td style="max-width: 150px; font-size: 12px; line-height: 1.4;">
+                                    <?php if ( ! empty( $licence->feedback_reason ) ) : ?>
+                                        <strong style="display:block;"><?php echo esc_html( $licence->feedback_reason ); ?></strong>
+                                        <?php if ( ! empty( $licence->feedback_text ) ) : ?>
+                                            <span style="color:#646970;"><?php echo esc_html( wp_trim_words( $licence->feedback_text, 10, '...' ) ); ?></span>
+                                        <?php endif; ?>
+                                    <?php else: ?>
+                                        <span style="color:#a7aaad;">-</span>
+                                    <?php endif; ?>
+                                </td>
                                 <td>
                                     <?php if ( $licence->status !== 'deactivated' ) : ?>
                                         <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
@@ -425,6 +448,11 @@ class API {
     public function verify_incoming_request_origin( \WP_REST_Request $request ) {
         $client_signature = $request->get_header( 'x_intenttarget_client_auth' );
         
+        // Fallback to body param — custom headers are often stripped by proxies/CDNs on live hosts.
+        if ( empty( $client_signature ) ) {
+            $client_signature = sanitize_text_field( $request->get_param( 'client_auth' ) ?? '' );
+        }
+        
         if ( empty( $client_signature ) || $client_signature !== 'ITP_SECURE_CLIENT_HANDSHAKE_2026' ) {
             return new \WP_Error( 'rest_forbidden', 'Unauthorised origin detected. Access blocked.', array( 'status' => 401 ) );
         }
@@ -433,8 +461,8 @@ class API {
     }
 
     public function process_secure_activation( \WP_REST_Request $request ) {
-        // If the request contains legacy params, route it to the legacy handler
-        if ( $request->get_param('plugin_slug') || $request->get_param('email') ) {
+        // If the request contains legacy params OR the new standard params, route it to the handler
+        if ( $request->get_param('plugin_slug') || $request->get_param('email') || $request->get_param('activation_email') ) {
              return $this->handle_remote_activation_request( $request );
         }
 
@@ -455,19 +483,36 @@ class API {
         }
         
         if ( $license->status === 'deactivated' ) {
-            return new \WP_REST_Response( array( 'success' => false, 'message' => 'This licence has been revoked.', 'lock_client' => true ), 403 );
+            $saved_clean_domain    = str_replace( array('http://', 'https://', 'www.'), '', $license->mapped_domain );
+            $incoming_clean_domain = str_replace( array('http://', 'https://', 'www.'), '', $activated_domain );
+
+            if ( ! empty( $license->mapped_domain ) && rtrim( $saved_clean_domain, '/' ) === rtrim( $incoming_clean_domain, '/' ) ) {
+                // Allow to proceed
+            } else {
+                return new \WP_REST_Response( array( 'success' => false, 'message' => 'This licence has been revoked or is bound to another domain.', 'lock_client' => true ), 403 );
+            }
         }
         
         if ( $license->status === 'active' && $license->mapped_domain !== $activated_domain ) {
-            return new \WP_REST_Response( array( 'success' => false, 'message' => 'Code already active on another domain.' ), 409 );
+            $saved_clean_domain    = str_replace( array('http://', 'https://', 'www.'), '', $license->mapped_domain );
+            $incoming_clean_domain = str_replace( array('http://', 'https://', 'www.'), '', $activated_domain );
+            
+            if ( rtrim( $saved_clean_domain, '/' ) !== rtrim( $incoming_clean_domain, '/' ) ) {
+                return new \WP_REST_Response( array( 'success' => false, 'message' => 'Code already active on another domain.' ), 409 );
+            }
         }
+
+        $now        = current_time( 'mysql' );
+        $expires_at = empty( $license->expires_at ) ? gmdate( 'Y-m-d H:i:s', strtotime( '+1 year', current_time( 'timestamp' ) ) ) : $license->expires_at;
         
         $wpdb->update(
             $table_name,
             array(
                 'status'        => 'active',
                 'mapped_domain' => $activated_domain,
-                'activated_at'  => current_time( 'mysql' )
+                'activated_at'  => empty( $license->activated_at ) ? $now : $license->activated_at,
+                'expires_at'    => $expires_at,
+                'last_seen_at'  => $now
             ),
             array( 'id' => $license->id )
         );
@@ -547,29 +592,34 @@ class API {
         }
 
         if ( $existing && $existing->status === 'deactivated' ) {
-            $wpdb->update(
-                $table_name,
-                array(
-                    'client_url'      => $client_url,
-                    'mapped_domain'   => $mapped_domain,
-                    'last_request_ip' => $request_ip,
-                    'last_seen_at'    => current_time( 'mysql' ),
-                ),
-                array( 'id' => (int) $existing->id ),
-                array( '%s', '%s', '%s', '%s' ),
-                array( '%d' )
-            );
+            $saved_clean_domain    = str_replace( array('http://', 'https://', 'www.'), '', $existing->mapped_domain );
+            $incoming_clean_domain = str_replace( array('http://', 'https://', 'www.'), '', $mapped_domain );
 
-            return new \WP_REST_Response( array(
-                'success'      => false,
-                'status'       => 'deactivated',
-                'licence_code' => $licence_code,
-                'plugin_slug'  => $existing_slug,
-                'message'      => 'This licence has been deactivated by the master hub.',
-            ), 403 );
+            if ( ! empty( $existing->mapped_domain ) && rtrim( $saved_clean_domain, '/' ) === rtrim( $incoming_clean_domain, '/' ) ) {
+                // Allow reactivation because it matches the original domain!
+            } else {
+                $wpdb->update(
+                    $table_name,
+                    array(
+                        'last_request_ip' => $request_ip,
+                        'last_seen_at'    => current_time( 'mysql' ),
+                    ),
+                    array( 'id' => (int) $existing->id ),
+                    array( '%s', '%s' ),
+                    array( '%d' )
+                );
+
+                return new \WP_REST_Response( array(
+                    'success'      => false,
+                    'status'       => 'deactivated',
+                    'licence_code' => $licence_code,
+                    'plugin_slug'  => $existing_slug,
+                    'message'      => 'This licence has been deactivated by the master hub and cannot be used on a new domain.',
+                ), 403 );
+            }
         }
 
-        if ( $existing->status === 'active' && ! empty( $existing->mapped_domain ) ) {
+        if ( $existing && $existing->status === 'active' && ! empty( $existing->mapped_domain ) ) {
             $saved_clean_domain    = str_replace( array('http://', 'https://', 'www.'), '', $existing->mapped_domain );
             $incoming_clean_domain = str_replace( array('http://', 'https://', 'www.'), '', $mapped_domain );
 
@@ -595,6 +645,9 @@ class API {
             }
         }
 
+        $now        = current_time( 'mysql' );
+        $expires_at = empty( $existing->expires_at ) ? gmdate( 'Y-m-d H:i:s', strtotime( '+1 year', current_time( 'timestamp' ) ) ) : $existing->expires_at;
+
         $wpdb->update(
             $table_name,
             array(
@@ -604,11 +657,12 @@ class API {
                 'status'           => 'active',
                 'activation_count' => (int) $existing->activation_count + 1,
                 'last_request_ip'  => $request_ip,
-                'activated_at'     => empty( $existing->activated_at ) ? current_time( 'mysql' ) : $existing->activated_at,
-                'last_seen_at'     => current_time( 'mysql' ),
+                'activated_at'     => empty( $existing->activated_at ) ? $now : $existing->activated_at,
+                'expires_at'       => $expires_at,
+                'last_seen_at'     => $now,
             ),
             array( 'id' => (int) $existing->id ),
-            array( '%s', '%s', '%s', '%s', '%d', '%s', '%s', '%s' ),
+            array( '%s', '%s', '%s', '%s', '%d', '%s', '%s', '%s', '%s' ),
             array( '%d' )
         );
 
@@ -657,17 +711,16 @@ class API {
             $wpdb->update(
                 $table_name,
                 array(
-                    'status'        => 'pending',
-                    'mapped_domain' => '',
-                    'client_url'    => '',
+                    'status'         => 'deactivated',
+                    'deactivated_at' => current_time( 'mysql' ),
                 ),
                 array( 'id' => (int) $existing->id ),
-                array( '%s', '%s', '%s' ),
+                array( '%s', '%s' ),
                 array( '%d' )
             );
         }
 
-        return new \WP_REST_Response( array( 'success' => true, 'message' => 'Licence released successfully.' ), 200 );
+        return new \WP_REST_Response( array( 'success' => true, 'message' => 'Licence deactivated successfully.' ), 200 );
     }
 
     public function handle_feedback_request( \WP_REST_Request $request ) {
@@ -694,11 +747,13 @@ class API {
             $wpdb->update(
                 $table_name,
                 array(
+                    'status'          => 'deactivated',
+                    'deactivated_at'  => current_time( 'mysql' ),
                     'feedback_reason' => $reason,
                     'feedback_text'   => $details,
                 ),
                 array( 'id' => (int) $existing->id ),
-                array( '%s', '%s' ),
+                array( '%s', '%s', '%s', '%s' ),
                 array( '%d' )
             );
             $wpdb->suppress_errors = false;
@@ -716,8 +771,9 @@ class Core {
 
     public function __construct() {
         register_activation_hook( __FILE__, [ Database::class, 'install_tables' ] );
+        register_deactivation_hook( __FILE__, [ $this, 'clear_scheduled_hooks' ] );
         
-        add_action( 'init', [ $this, 'init_components' ] );
+        add_action( 'init', [ $this, 'init_components' ], 1 );
     }
 
     public function init_components() {
@@ -729,6 +785,14 @@ class Core {
 
         $api = new API();
         $api->init();
+
+        require_once plugin_dir_path( __FILE__ ) . 'class-intenttarget-cron.php';
+        $cron = new Cron();
+        $cron->init();
+    }
+
+    public function clear_scheduled_hooks() {
+        wp_clear_scheduled_hook( 'itp_hub_daily_expiration_check' );
     }
 }
 

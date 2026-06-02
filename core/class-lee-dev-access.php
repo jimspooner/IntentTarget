@@ -105,4 +105,82 @@ function lee_dev_process_debug_logging_toggle_2846() {
     exit;
 }
 
+// =========================================================================
+// CACHE PURGE HELPER — fires on every licence status change
+// =========================================================================
+add_action( 'update_option', 'lee_dev_purge_page_caches_on_licence_change_7381', 10, 3 );
+function lee_dev_purge_page_caches_on_licence_change_7381( $option, $old_value, $value ) {
+    $licence_options = array( 'lee_dev_licence_status', 'lee_dev_pro_licence_status' );
+    if ( ! in_array( $option, $licence_options, true ) ) {
+        return;
+    }
+    if ( $old_value === $value ) {
+        return;
+    }
+
+    // WP Rocket
+    if ( function_exists( 'rocket_clean_domain' ) ) {
+        rocket_clean_domain();
+    }
+
+    // W3 Total Cache
+    if ( function_exists( 'w3tc_flush_all' ) ) {
+        w3tc_flush_all();
+    }
+
+    // WP Super Cache
+    if ( function_exists( 'wp_cache_clear_cache' ) ) {
+        wp_cache_clear_cache();
+    }
+
+    // LiteSpeed Cache
+    if ( class_exists( 'LiteSpeed_Cache_API' ) && method_exists( 'LiteSpeed_Cache_API', 'purge_all' ) ) {
+        LiteSpeed_Cache_API::purge_all();
+    }
+
+    // WP Fastest Cache
+    if ( function_exists( 'wpfc_clear_all_cache' ) ) {
+        wpfc_clear_all_cache();
+    }
+
+    // Hummingbird
+    if ( function_exists( 'wp_hummingbird_cache_clear' ) ) {
+        wp_hummingbird_cache_clear();
+    }
+
+    // SG Optimiser
+    if ( function_exists( 'sg_cachepress_purge_cache' ) ) {
+        sg_cachepress_purge_cache();
+    }
+
+    // Cloudflare (via WP Cloudflare Super Page Cache or similar)
+    if ( function_exists( 'swcfpc_purge_all' ) ) {
+        swcfpc_purge_all();
+    }
+
+    // WP Engine
+    if ( class_exists( 'WPEngine\Cache\Purge' ) ) {
+        $wpe_purge = new \WPEngine\Cache\Purge();
+        if ( method_exists( $wpe_purge, 'purge_all' ) ) {
+            $wpe_purge->purge_all();
+        }
+    }
+
+    // Kinsta
+    if ( class_exists( 'Kinsta\Cache' ) ) {
+        $kinsta_cache = new \Kinsta\Cache();
+        if ( method_exists( $kinsta_cache, 'purge_complete_cache' ) ) {
+            $kinsta_cache->purge_complete_cache();
+        }
+    }
+
+    if ( function_exists( 'lee_dev_debug_log_event_6158' ) ) {
+        lee_dev_debug_log_event_6158( 'cache.purge.licence_change', array(
+            'option'    => $option,
+            'old_value' => $old_value,
+            'new_value' => $value,
+        ) );
+    }
+}
+
 

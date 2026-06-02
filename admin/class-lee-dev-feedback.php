@@ -43,7 +43,8 @@ function lee_dev_render_deactivation_feedback_modal_8192() {
         var deactivateLink = null;
         var coreKey = <?php echo wp_json_encode( $core_key ); ?>;
         var proKey  = <?php echo wp_json_encode( $pro_key ); ?>;
-        var feedbackUrl = "https://intenttargetpro.com/wp-json/intenttarget/v1/feedback";
+        var feedbackUrl = <?php echo wp_json_encode( apply_filters( 'lee_dev_licence_feedback_endpoint', 'https://intenttargetpro.com/wp-json/intenttarget/v1/feedback' ) ); ?>;
+        var releaseUrl  = <?php echo wp_json_encode( apply_filters( 'lee_dev_licence_release_endpoint', 'https://intenttargetpro.com/wp-json/intenttarget/v1/release' ) ); ?>;
         var pluginSlug = '';
 
         $('#the-list').on('click', 'a[id*="deactivate-intenttarget"], a[href*="action=deactivate"][href*="intenttarget"]', function(e) {
@@ -69,7 +70,17 @@ function lee_dev_render_deactivation_feedback_modal_8192() {
 
         $('#itp-deactivate-skip').on('click', function(e) {
             e.preventDefault();
-            window.location.href = deactivateLink;
+            var licenceCode = (pluginSlug === 'pro') ? proKey : coreKey;
+            
+            // Still release the licence even if they skip feedback
+            $.ajax({
+                url: releaseUrl,
+                method: 'POST',
+                data: { licence_code: licenceCode },
+                complete: function() {
+                    window.location.href = deactivateLink;
+                }
+            });
         });
 
         $('#itp-deactivate-submit').on('click', function(e) {
@@ -79,14 +90,22 @@ function lee_dev_render_deactivation_feedback_modal_8192() {
             var details = $('#itp_deactivate_details').val() || '';
             var licenceCode = (pluginSlug === 'pro') ? proKey : coreKey;
 
+            // If they didn't provide feedback, just hit the release endpoint
             if (!reason && !details) {
-                window.location.href = deactivateLink;
+                $.ajax({
+                    url: releaseUrl,
+                    method: 'POST',
+                    data: { licence_code: licenceCode },
+                    complete: function() {
+                        window.location.href = deactivateLink;
+                    }
+                });
                 return;
             }
 
             $btn.text('Sending...').prop('disabled', true);
 
-            // Send feedback silently
+            // Send feedback silently (which also deactivates it on the hub)
             $.ajax({
                 url: feedbackUrl,
                 method: 'POST',

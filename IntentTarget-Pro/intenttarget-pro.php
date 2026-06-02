@@ -307,7 +307,12 @@ function lee_dev_pro_render_licence_panel_4193() {
         } elseif ( $status_update === 'deactivated' ) {
             echo '<div class="notice notice-info is-dismissible"><p><strong>' . esc_html__( 'Pro Licence Deactivated:', 'intenttarget-pro' ) . '</strong> ' . esc_html__( 'The Pro add-on has been deactivated locally.', 'intenttarget-pro' ) . '</p></div>';
         } elseif ( $status_update === 'invalid' ) {
-            echo '<div class="notice notice-error is-dismissible"><p><strong>' . esc_html__( 'Pro Licence Denied:', 'intenttarget-pro' ) . '</strong> ' . esc_html__( 'The key provided is invalid. Pro licence codes must use the ITPP- prefix.', 'intenttarget-pro' ) . '</p></div>';
+            $pro_err_msg = isset( $_GET['err_msg'] ) ? sanitize_text_field( wp_unslash( $_GET['err_msg'] ) ) : '';
+            if ( ! empty( $pro_err_msg ) ) {
+                echo '<div class="notice notice-error is-dismissible"><p><strong>' . esc_html__( 'Pro Licence Denied:', 'intenttarget-pro' ) . '</strong> ' . esc_html( $pro_err_msg ) . '</p></div>';
+            } else {
+                echo '<div class="notice notice-error is-dismissible"><p><strong>' . esc_html__( 'Pro Licence Denied:', 'intenttarget-pro' ) . '</strong> ' . esc_html__( 'The key provided is invalid. Pro licence codes must use the ITPP- prefix.', 'intenttarget-pro' ) . '</p></div>';
+            }
         } elseif ( $status_update === 'empty' ) {
             echo '<div class="notice notice-warning is-dismissible"><p><strong>' . esc_html__( 'Empty Pro Licence Key:', 'intenttarget-pro' ) . '</strong> ' . esc_html__( 'Please provide a key for activation.', 'intenttarget-pro' ) . '</p></div>';
         }
@@ -392,12 +397,16 @@ function lee_dev_pro_process_licence_activation_8167() {
         $endpoint = apply_filters( 'lee_dev_pro_licence_activation_endpoint_8167', LEE_DEV_PRO_ACTIVATION_ENDPOINT );
         $response = wp_safe_remote_post( $endpoint, array(
             'timeout' => 15,
+            'headers' => array(
+                'x_intenttarget_client_auth' => 'ITP_SECURE_CLIENT_HANDSHAKE_2026',
+            ),
             'body'    => array(
                 'licence_code'     => $clean_key,
                 'plugin_slug'      => LEE_DEV_PRO_PLUGIN_SLUG,
                 'activation_email' => get_option( 'admin_email' ),
                 'domain'           => wp_parse_url( home_url(), PHP_URL_HOST ),
                 'client_url'       => home_url(),
+                'client_auth'      => 'ITP_SECURE_CLIENT_HANDSHAKE_2026',
             ),
         ) );
 
@@ -415,6 +424,7 @@ function lee_dev_pro_process_licence_activation_8167() {
         $response_code = (int) wp_remote_retrieve_response_code( $response );
         $body          = json_decode( wp_remote_retrieve_body( $response ), true );
         $remote_status = is_array( $body ) && isset( $body['status'] ) ? sanitize_text_field( $body['status'] ) : 'unauthorised';
+        $remote_msg    = is_array( $body ) && isset( $body['message'] ) ? sanitize_text_field( $body['message'] ) : '';
 
         if ( $response_code === 200 && $remote_status === 'active' ) {
             update_option( 'lee_dev_pro_licence_key', $clean_key );
@@ -433,9 +443,10 @@ function lee_dev_pro_process_licence_activation_8167() {
                 lee_dev_debug_log_event_6158( 'pro_licence.activation.denied', array(
                     'response_code' => $response_code,
                     'status'        => $remote_status,
+                    'message'       => $remote_msg,
                 ) );
             }
-            lee_dev_pro_redirect_to_design_tab_3187( 'invalid' );
+            lee_dev_pro_redirect_to_design_tab_3187( 'invalid', $remote_msg );
         }
     } elseif ( $action === 'deactivate' ) {
         // Ping Master Hub to release the Pro licence remotely.
@@ -458,12 +469,16 @@ function lee_dev_pro_process_licence_activation_8167() {
     }
 }
 
-function lee_dev_pro_redirect_to_design_tab_3187( $status ) {
-    wp_safe_redirect( add_query_arg( array(
+function lee_dev_pro_redirect_to_design_tab_3187( $status, $error_message = '' ) {
+    $args = array(
         'page'                => 'itp-search-dashboard',
         'tab'                 => 'design_pro',
         'pro-licence-updated' => sanitize_text_field( $status ),
-    ), admin_url( 'admin.php' ) ) );
+    );
+    if ( ! empty( $error_message ) ) {
+        $args['err_msg'] = rawurlencode( $error_message );
+    }
+    wp_safe_redirect( add_query_arg( $args, admin_url( 'admin.php' ) ) );
     exit;
 }
 

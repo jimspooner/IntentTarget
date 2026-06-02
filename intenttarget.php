@@ -79,8 +79,9 @@ if ( ! defined( 'LEE_DEV_PLUGIN_URL' ) ) {
     define( 'LEE_DEV_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 }
 if ( ! defined( 'LEE_DEV_FRONTEND_UI_VERSION' ) ) {
-    // Bump when assets/js/itp-frontend-ui.js changes to invalidate browser caches.
-    define( 'LEE_DEV_FRONTEND_UI_VERSION', '1.0.0' );
+    $ui_js_path = LEE_DEV_PLUGIN_DIR . 'assets/js/itp-frontend-ui.js';
+    $ui_version = file_exists( $ui_js_path ) ? (string) filemtime( $ui_js_path ) : '1.0.0';
+    define( 'LEE_DEV_FRONTEND_UI_VERSION', $ui_version );
 }
 
 // =========================================================================

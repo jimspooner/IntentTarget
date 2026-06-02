@@ -51,7 +51,9 @@ if ( ! defined( 'LEE_DEV_PRO_AI_FAQ_REST_NAMESPACE' ) ) {
     define( 'LEE_DEV_PRO_AI_FAQ_REST_NAMESPACE', 'intenttargetpro/v1' );
 }
 if ( ! defined( 'LEE_DEV_PRO_AI_FAQ_VERSION' ) ) {
-    define( 'LEE_DEV_PRO_AI_FAQ_VERSION', '1.0.0' );
+    $faq_admin_js = plugin_dir_path( __FILE__ ) . '../../assets/js/itp-pro-ai-faq-admin.js';
+    $faq_version  = file_exists( $faq_admin_js ) ? (string) filemtime( $faq_admin_js ) : '1.0.0';
+    define( 'LEE_DEV_PRO_AI_FAQ_VERSION', $faq_version );
 }
 
 // =========================================================================

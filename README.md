@@ -110,9 +110,11 @@ All per-visitor surfaces (popup, dashboard tiles, preferences nonce, ROI click t
 ### Licence Flow
 1. The customer purchases a licence from the Master Hub.
 2. The administrator enters the licence code on the **Interest Tracker -> Pro Licence** tab.
-3. The plugin sends an activation request to the Master Hub REST API (`intenttarget-hub/v1/activate`).
-4. On success, the local status is set to `authorised` and Pro features are unlocked.
-5. A daily background job re-verifies the licence. If revoked, the status reverts to `unauthorised`.
+3. The plugin sends an authenticated activation request to the Master Hub REST API (`intenttarget-hub/v1/activate`). The request includes both a custom HTTP header (`x_intenttarget_client_auth`) and a body fallback (`client_auth`) to survive proxy and CDN header stripping on live hosts.
+4. On success, the local status is set to `authorised`, the Hub records the activation date, and Pro features are unlocked. The licence expires 1 year from activation.
+5. A daily background job re-verifies the licence against the Hub. If revoked, expired, or deactivated, the local status reverts to `unauthorised`.
+6. **Same-domain reactivation:** If a licence is deactivated (via the plugin UI, uninstall, or Hub admin), it can be reactivated on the exact same domain without purchasing a new key. The Hub verifies the requesting domain matches the previously mapped domain.
+7. **Deactivation feedback:** When deactivating from the plugin UI, a modal optionally captures the user's reason and sends it to the Hub for product-improvement analytics.
 
 ---
 
@@ -126,30 +128,32 @@ IntentTarget/
 ├── custom-interests.css                # Frontend interest-selection styles
 ├── admin/
 │   ├── class-lee-dev-menu.php          # Dashboard menu registration and tab routing
+│   ├── class-lee-dev-feedback.php      # Deactivation feedback modal (Core + Pro UI)
 │   ├── view-dashboard.php              # Main dashboard view (adverts, analytics, settings)
 │   └── view-sidebar-box.php            # Post editor sidebar box for per-post controls
 ├── assets/
 │   ├── js/
 │   │   ├── itp-frontend-ui.js          # Cache-safe hydration runtime
-│   │   └── itp-pro-ai-faq-admin.js   # Pro AI FAQ metabox controller
+│   │   └── itp-pro-ai-faq-admin.js     # Pro AI FAQ metabox controller
 │   └── css/
-│       └── itp-pro-ai-faq-admin.css  # Pro AI FAQ metabox styling
+│       └── itp-pro-ai-faq-admin.css    # Pro AI FAQ metabox styling
 ├── core/
-│   ├── class-lee-dev-access.php        # Access control and readiness checks
-│   ├── class-lee-dev-cron.php        # Background batch scan engine
-│   ├── class-lee-dev-hooks.php       # Frontend hook registration
-│   ├── class-lee-dev-intents.php     # Intent categories, lexicon, and classification
-│   ├── class-lee-dev-parser.php      # Content normalisation and keyphrase extraction
-│   ├── class-lee-dev-propensity.php  # Propensity scoring algorithm
-│   └── class-lee-dev-transient.php   # Temporary data helpers
+│   ├── class-lee-dev-access.php        # Access control, readiness checks, cache-purge helper
+│   ├── class-lee-dev-cron.php          # Background batch scan engine
+│   ├── class-lee-dev-hooks.php         # Frontend hook registration
+│   ├── class-lee-dev-intents.php       # Intent categories, lexicon, and classification
+│   ├── class-lee-dev-parser.php        # Content normalisation and keyphrase extraction
+│   ├── class-lee-dev-propensity.php    # Propensity scoring algorithm
+│   └── class-lee-dev-transient.php     # Temporary data helpers
 ├── telemetry/
-│   ├── class-lee-dev-advertising.php # Advert rendering, popup, banner, dashboard tiles
-│   ├── class-lee-dev-ajax.php        # Public AJAX handlers (engagement, search feedback)
-│   └── class-lee-dev-tracker.php   # Telemetry pings and licence helpers
+│   ├── class-lee-dev-advertising.php   # Advert rendering, popup, banner, dashboard tiles
+│   ├── class-lee-dev-ajax.php          # Public AJAX handlers (engagement, search feedback)
+│   └── class-lee-dev-tracker.php       # Core licence activation, deactivation, daily verification
 ├── telemetry-master/
 │   └── (telemetry master stubs)
 ├── master-server-hub/
-│   └── intenttarget-master-hub.php   # Standalone Master Hub licence server
+│   ├── intenttarget-master-hub.php     # Standalone Master Hub licence server (REST API, admin UI, db schema)
+│   └── class-intenttarget-cron.php     # Daily cron for licence expiration checks
 └── IntentTarget-Pro/                 # Pro add-on source (mirrored to top-level plugin)
     ├── intenttarget-pro.php          # Pro bootstrap, licence activation, styling tab
     └── includes/
@@ -205,6 +209,40 @@ When a Pro licence is inactive, Pro UI tabs remain visible but are disabled with
 ---
 
 ## Changelog
+
+### 1.1.0
+- **Master Hub Licensing Overhaul**
+  - Added `expires_at` column to `wp_intenttarget_licenses`; licences expire 1 year from activation.
+  - Added daily cron (`itp_hub_daily_expiration_check`) to automatically deactivate expired licences.
+  - Added `feedback_reason` and `feedback_text` columns for deactivation analytics.
+  - Added `/release` endpoint for remote deactivation/uninstall.
+  - Added `/feedback` endpoint to capture user deactivation reasons.
+  - **Same-domain reactivation:** Deactivated licences can be reactivated on the exact same domain without purchasing a new key. The Hub matches the requesting domain against the previously mapped domain.
+  - **Dual-auth mechanism:** The secure activation endpoint (`intenttarget-hub/v1/activate`) accepts authentication via both a custom HTTP header (`x_intenttarget_client_auth`) and a POST body fallback (`client_auth`), ensuring requests survive proxy and CDN header stripping on live hosts.
+  - Improved error messages: the Hub now returns specific rejection reasons (domain mismatch, wrong prefix, expired, etc.) instead of a generic failure.
+
+- **Client Plugin Improvements**
+  - Core (`telemetry/class-lee-dev-tracker.php`) and Pro (`IntentTarget-Pro/intenttarget-pro.php`) activation requests now send the auth token in both header and body.
+  - Both client plugins capture and display the **actual** error message returned by the Master Hub (passed via `err_msg` query arg) instead of showing a misleading generic "invalid prefix" message for every failure.
+  - Pro UI now shows domain-specific, Hub-generated error text in the admin notice on activation failure.
+  - Core and Pro daily verification jobs now correctly ping the Hub to detect remote deactivation or expiration.
+
+- **Cache Safety Fixes**
+  - `LEE_DEV_FRONTEND_UI_VERSION` now auto-bumps using `filemtime()` on the JS file — no more stale browser caches after JS updates.
+  - `LEE_DEV_PRO_AI_FAQ_VERSION` now also auto-bumps via `filemtime()`.
+  - Added automatic page cache purging on every licence status change. Supports WP Rocket, W3 Total Cache, WP Super Cache, LiteSpeed Cache, WP Fastest Cache, Hummingbird, SG Optimiser, Cloudflare Super Page Cache, WP Engine, and Kinsta.
+  - This ensures that when a licence is activated or deactivated, full-page caches are invalidated so the frontend features (popup, dashboard, preferences) appear or disappear immediately.
+
+- **Deactivation Feedback UI**
+  - New `admin/class-lee-dev-feedback.php` renders a modal when the user deactivates a licence from the plugin UI.
+  - Modal offers pre-set reasons ("Switching to another plugin", "Not working as expected", "Feature missing", "Temporary deactivation", "Other") plus an optional free-text field.
+  - Feedback is sent to the Hub and stored against the licence record.
+  - The UI also allows skipping feedback while still releasing the licence remotely.
+
+- **Bug Fixes**
+  - Fixed activation routing bug where `activation_email` parameter was not recognised, causing requests to hit the wrong handler.
+  - Fixed Core plugin not sending `plugin_slug` in activation requests.
+  - Fixed Pro plugin `uninstall.php` and Core `uninstall.php` to ping the `/release` endpoint before deleting data, so licences are properly deactivated on the Hub rather than deleted.
 
 ### 1.0.0
 - Initial commercial framework release.
