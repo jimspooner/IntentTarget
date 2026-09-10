@@ -17,7 +17,7 @@ if ( $_SERVER['REQUEST_METHOD'] !== 'POST' ) {
     exit;
 }
 
-$expected_secret = 'b8f4c2e9d1a3756b90f8d1e4a3b2c7f6e5d8a9b0c1d2e3f4a5b6c7d8e9f0a1b2';
+$expected_secret = 'your_code';
 // Check if the header was sent (PHP automatically pre-pends HTTP_ and replaces hyphens with underscores)
 $provided_secret = $_SERVER['HTTP_X_ITP_TELEMETRY_TOKEN'] ?? '';
 // Use hash_equals to prevent timing attacks
